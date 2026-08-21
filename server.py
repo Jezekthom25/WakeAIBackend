@@ -304,73 +304,8 @@ def prepare_speech_text(
     return cleaned
 
 
-def is_military_first_greeting(
-    text: str,
-    personality: str
-) -> bool:
-
-    if "military" not in personality.strip().lower():
-        return False
-
-    lowered = text.strip().lower()
-
-    greeting_markers = (
-        "jak ses vyspal",
-        "how did you sleep",
-        "jak spałeś",
-        "jak spales",
-        "cómo dormiste",
-        "como dormiste",
-        "як спалося",
-        "vstávat, vojáku",
-        "wake up, recruit",
-        "pobudka, żołnierzu",
-        "arriba, soldado",
-        "підйом, солдате"
-    )
-
-    return any(
-        marker in lowered
-        for marker in greeting_markers
-    )
-
-
-def prerecorded_military_greeting() -> bytes | None:
-
-    audio_path = (
-        Path(__file__).resolve().parent
-        / "wakeai_sergeant_test.wav"
-    )
-
-    if not audio_path.exists():
-        return None
-
-    return audio_path.read_bytes()
-
-
 @app.post("/speak")
 def speak(request: SpeechRequest):
-
-    if is_military_first_greeting(
-        request.text,
-        request.personality
-    ):
-
-        prerecorded_audio = (
-            prerecorded_military_greeting()
-        )
-
-        if prerecorded_audio is not None:
-
-            return Response(
-                content=prerecorded_audio,
-                media_type="audio/wav",
-                headers={
-                    "Cache-Control": "no-store",
-                    "X-WakeAI-Voice": "sergeant-prerecorded",
-                    "X-WakeAI-Voice-Profile": "military-prerecorded-v1"
-                }
-            )
 
     voice, instructions = voice_settings(
         request.personality,
