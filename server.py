@@ -304,8 +304,77 @@ def prepare_speech_text(
     return cleaned
 
 
+
+def is_military_first_greeting(
+    text: str,
+    personality: str
+) -> bool:
+
+    if "military" not in personality.strip().lower():
+        return False
+
+    lowered = text.strip().lower()
+
+    markers = (
+        "jak ses vyspal",
+        "vstávat, vojáku",
+        "vstavat, vojaku",
+        "how did you sleep",
+        "wake up, soldier",
+        "jak spałeś",
+        "jak spales",
+        "pobudka",
+        "cómo dormiste",
+        "como dormiste",
+        "як спалося"
+    )
+
+    return any(marker in lowered for marker in markers)
+
+
+def approved_military_greeting() -> bytes | None:
+
+    audio_path = (
+        Path(__file__).resolve().parent
+        / "01_onyx_military.wav"
+    )
+
+    if not audio_path.exists():
+        return None
+
+    try:
+        audio_bytes = audio_path.read_bytes()
+    except OSError:
+        return None
+
+    if not audio_bytes:
+        return None
+
+    return audio_bytes
+
+
 @app.post("/speak")
 def speak(request: SpeechRequest):
+
+    # The user explicitly approved this exact generated ONYX take.
+    # Use it for the initial Military alarm greeting so the startup
+    # voice is bit-for-bit identical every time.
+    if is_military_first_greeting(
+        request.text,
+        request.personality
+    ):
+        approved_audio = approved_military_greeting()
+
+        if approved_audio is not None:
+            return Response(
+                content=approved_audio,
+                media_type="audio/wav",
+                headers={
+                    "Cache-Control": "no-store",
+                    "X-WakeAI-Voice": "approved-onyx-prerecorded",
+                    "X-WakeAI-Voice-Profile": "military-approved-v1"
+                }
+            )
 
     voice, instructions = voice_settings(
         request.personality,
