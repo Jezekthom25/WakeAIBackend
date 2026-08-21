@@ -42,11 +42,18 @@ def personality_prompt(personality: str, custom_profile: str) -> str:
 
     if "military" in name:
         return (
-            "Act like a tough military drill sergeant waking a recruit. "
-            "Be commanding, energetic and very direct. "
-            "Use short punchy commands. "
-            "Do not be abusive, threatening or insulting. "
-            "No long explanations."
+            "You are a hard-edged morning drill sergeant. "
+            "Your purpose is to get the recruit physically moving NOW. "
+            "Use very short, clipped commands. Usually 3 to 8 words per sentence. "
+            "Prefer imperative language: Get up. Feet down. Move. Report. "
+            "Do not sound friendly, soothing, therapeutic, chatty, or polite. "
+            "Do not open with empathy such as 'I understand', 'okay', or 'I know'. "
+            "Do not give long explanations. "
+            "Do not ask soft conversational questions. "
+            "If you ask a question, make it sound like a military report request. "
+            "Use strong punctuation and decisive sentence endings. "
+            "Challenge excuses immediately, but never insult, threaten, humiliate, "
+            "or imitate a specific real person."
         )
 
     if "strict" in name:
@@ -131,7 +138,9 @@ def chat(request: WakeRequest):
         "- Maximum TWO short sentences.\n"
         "- Avoid lists, headings and long explanations.\n"
         "- React directly to what the user just said.\n"
-        "- Keep the pace energetic enough for a morning alarm.\n\n"
+        "- Keep the pace energetic enough for a morning alarm.\n"
+        "- Never pad the response with filler.\n"
+        "- When personality is Military, prioritize commands over conversation.\n\n"
         "PERSONALITY:\n"
         f"{personality_prompt(request.personality, request.custom_profile)}\n\n"
         f"{movement_prompt(request.movement_state, request.seconds_since_movement)}\n\n"
@@ -177,12 +186,18 @@ def voice_settings(
     if "military" in name:
         return (
             "onyx",
-            language_instruction +
-            "Perform like a stern military drill sergeant waking a recruit at dawn. "
-            "Use a deep, commanding, authoritative delivery with clipped rhythm "
-            "and strong energy. Speak briskly and decisively. "
-            "Do not imitate any specific real person. "
-            "Do not become so loud or theatrical that the words are unclear."
+            f"Speak in {language}. "
+            "DELIVERY STYLE: hard military drill-sergeant energy. "
+            "Use a low, firm, authoritative register. "
+            "Speak fast and clipped, with sharp consonants and hard sentence endings. "
+            "Every command should land like an order, not a suggestion. "
+            "Use brief pauses between commands. "
+            "Do NOT sound warm, friendly, conversational, reassuring, amused, or gentle. "
+            "Do NOT soften your tone when the text contains a question. "
+            "A question must sound like a demanded status report. "
+            "Avoid sing-song intonation and avoid a customer-service voice. "
+            "Strong intensity, controlled volume, crystal-clear pronunciation. "
+            "Do not imitate any specific real person."
         )
 
     if "strict" in name:
@@ -227,10 +242,78 @@ def voice_settings(
     )
 
 
+def prepare_speech_text(
+    text: str,
+    personality: str,
+    language: str
+) -> str:
+
+    name = personality.strip().lower()
+    lang = language.strip().lower()
+    cleaned = text.strip()
+
+    if "military" not in name:
+        return cleaned
+
+    # The long first greeting made the voice soften into a conversational
+    # question. Keep the opening exactly in the short command cadence
+    # that sounded right in the standalone WakeAI test.
+    first_greeting_markers = (
+        "jak ses vyspal",
+        "how did you sleep",
+        "jak spałeś",
+        "jak spales",
+        "cómo dormiste",
+        "como dormiste",
+        "як спалося"
+    )
+
+    lowered = cleaned.lower()
+
+    if any(marker in lowered for marker in first_greeting_markers):
+
+        if "czech" in lang:
+            return (
+                "Vstávat! Žádné vyjednávání. "
+                "Nohy na zem a do pohybu, vojáku!"
+            )
+
+        if "polish" in lang:
+            return (
+                "Pobudka! Bez negocjacji. "
+                "Nogi na podłogę i ruszaj, żołnierzu!"
+            )
+
+        if "spanish" in lang:
+            return (
+                "¡Arriba! Nada de negociar. "
+                "Pies al suelo y en movimiento, soldado!"
+            )
+
+        if "ukrainian" in lang:
+            return (
+                "Підйом! Без переговорів. "
+                "Ноги на підлогу й рухайся, солдате!"
+            )
+
+        return (
+            "Wake up! No negotiations. "
+            "Feet on the floor and move, recruit!"
+        )
+
+    return cleaned
+
+
 @app.post("/speak")
 def speak(request: SpeechRequest):
 
     voice, instructions = voice_settings(
+        request.personality,
+        request.language
+    )
+
+    spoken_text = prepare_speech_text(
+        request.text,
         request.personality,
         request.language
     )
@@ -249,7 +332,7 @@ def speak(request: SpeechRequest):
         with client.audio.speech.with_streaming_response.create(
             model="gpt-4o-mini-tts",
             voice=voice,
-            input=request.text,
+            input=spoken_text,
             instructions=instructions,
             response_format="wav"
         ) as speech_response:
@@ -262,7 +345,12 @@ def speak(request: SpeechRequest):
             media_type="audio/wav",
             headers={
                 "Cache-Control": "no-store",
-                "X-WakeAI-Voice": voice
+                "X-WakeAI-Voice": voice,
+                "X-WakeAI-Voice-Profile": (
+                    "military-v2"
+                    if "military" in request.personality.strip().lower()
+                    else "standard"
+                )
             }
         )
 
