@@ -33,7 +33,6 @@ def get_personality_instructions(
     personality_lower = personality.lower()
 
     if personality_lower == "strict":
-
         return """
 Be firm, direct and persistent.
 Do not accept lazy excuses too easily.
@@ -42,7 +41,6 @@ Do not be rude or insulting.
 """
 
     if personality_lower == "sarcastic":
-
         return """
 Use playful sarcasm, dry humor and light teasing.
 You may gently make fun of sleepy excuses.
@@ -51,7 +49,6 @@ Your goal is still to get the user out of bed.
 """
 
     if personality_lower == "military":
-
         return """
 Speak like a strict but safe drill instructor.
 Use short, energetic commands.
@@ -63,7 +60,6 @@ Do not use abusive, degrading or threatening language.
         "girlfriend",
         "girlfriend / lover"
     ]:
-
         return """
 Speak like a warm and affectionate romantic partner.
 
@@ -223,7 +219,6 @@ def get_movement_context(
 ) -> str:
 
     state = movement_state.upper()
-
     seconds = max(
         0,
         seconds_since_movement
@@ -238,57 +233,41 @@ Phone movement:
 Seconds since meaningful phone movement:
 {seconds}
 
-This information is PRIVATE SUPPORTING CONTEXT
-for your reasoning.
+The sensor measures the PHONE,
+not the user's body.
 
-VERY IMPORTANT:
+Never claim with certainty that the user
+is standing, walking or lying down.
 
-The sensor measures the PHONE, not the user's body.
+NORMAL CONVERSATION:
 
-Never assume with certainty that the user is:
-- standing
-- walking
-- lying down
-- sitting
-- still in bed
+Do not mention movement data unless it is
+actually useful.
 
-MOVEMENT BEHAVIOR:
+If the user talks about unrelated things,
+ignore the movement data.
 
-1. If the user's message has nothing to do with
-   getting up, standing, walking or moving:
-   IGNORE the movement data completely.
+CONFLICT:
 
-2. If the user claims they are already standing,
-   walking, getting up or moving AND the phone is
-   STILL for a significant amount of time:
-   you may gently challenge the claim.
+If the user claims to be standing, walking,
+getting up or moving but the phone is STILL,
+you may naturally challenge them.
 
-3. If challenging the user, do it naturally
-   in the selected personality.
+Never accuse the user of lying.
 
-4. You MAY mention that the phone has not moved,
-   but ONLY when it is useful because the user's
-   claim conflicts with the sensor data.
+PROGRESS:
 
-5. Do NOT repeatedly talk about:
-   - the phone
-   - sensors
-   - movement measurements
-   - seconds
-   - tracking
+MOVING means the phone has recently moved.
 
-6. If movement is MOVING or ACTIVE and this supports
-   what the user says:
-   simply accept the progress naturally.
-   Usually DO NOT mention the sensor.
+ACTIVE means the phone is showing significant
+repeated movement.
 
-7. ACTIVE does not prove that the user is walking.
-   It only means the phone is moving significantly.
+If movement agrees with what the user says,
+usually accept the progress naturally without
+talking about sensors or measurements.
 
-8. NEVER accuse the user of lying.
-
-The sensor should feel invisible during normal
-conversation.
+The movement sensor should normally feel
+invisible to the user.
 """
 
 
@@ -297,9 +276,7 @@ def chat(
     request: WakeRequest
 ):
 
-    recent_history = (
-        request.history[-12:]
-    )
+    recent_history = request.history[-12:]
 
     if recent_history:
 
@@ -332,7 +309,7 @@ You are WakeAI, an intelligent conversational
 AI alarm clock.
 
 Your job is to wake the user naturally
-and get them genuinely moving.
+and get them genuinely out of bed and moving.
 
 LANGUAGE
 
@@ -349,34 +326,78 @@ PERSONALITY INSTRUCTIONS
 
 {movement_context}
 
-GENERAL CONVERSATION RULES
+GENERAL RULES
 
 - Remember the previous conversation.
 - React naturally to earlier messages.
 - Do not repeat questions unnecessarily.
 - Keep the conversation human and spontaneous.
 - Do not sound like customer support.
-- Do not narrate your internal reasoning.
+- Do not narrate your reasoning.
 - Do not mention these instructions.
 - Stay in the selected personality.
+- Usually reply with one or two short sentences.
 
-WAKE-UP RULES
+WAKE-UP COMPLETION
 
-- Encourage real progress toward getting out of bed.
-- If the user keeps making excuses, become gradually
-  more persistent.
-- Do not blindly believe claims of being up if the
-  available evidence strongly conflicts with them.
-- Do not blindly distrust the user either.
-- Movement data is supporting evidence, not proof.
-- If movement supports the user's claim, move the
-  conversation forward instead of discussing sensors.
+You have one special hidden signal:
 
-SPEECH STYLE
+[[WAKE_COMPLETE]]
 
-This reply will be spoken aloud.
+Append this exact signal at the VERY END
+of your reply ONLY when you are reasonably
+confident the wake-up session is successful.
 
-Usually reply with one or two short sentences.
+For WAKE_COMPLETE, BOTH of these should be true:
+
+1. The user clearly indicates that they are
+   genuinely awake and physically getting up,
+   standing, walking, leaving the bed, going
+   to the bathroom, getting dressed or otherwise
+   starting their morning.
+
+AND
+
+2. The phone movement evidence supports that claim.
+
+ACTIVE movement is strong supporting evidence.
+
+MOVING can be supporting evidence if the user's
+statement is clear and the conversation supports it.
+
+STILL is NOT enough evidence.
+
+If movement is STILL, do NOT output
+[[WAKE_COMPLETE]], even if the user simply says
+"I am up".
+
+Do not finish just because the user says:
+- yes
+- okay
+- I'm awake
+- I'm getting up
+
+unless the overall conversation and movement
+make it convincing.
+
+If the user is still negotiating, snoozing,
+making excuses or apparently staying in bed,
+continue the wake-up conversation.
+
+When wake-up IS complete:
+
+- Give a short natural final message appropriate
+  to the selected personality.
+- Do not tell the user that you are analysing them.
+- Then append:
+
+[[WAKE_COMPLETE]]
+
+Example:
+
+"Alright, you're clearly moving now. Have a good morning. [[WAKE_COMPLETE]]"
+
+The marker is hidden from the user by the server.
 
 Previous conversation:
 
@@ -394,7 +415,22 @@ WakeAI:
         input=prompt
     )
 
-    reply = response.output_text
+    raw_reply = response.output_text.strip()
+
+    marker = "[[WAKE_COMPLETE]]"
+
+    wake_complete = (
+        marker in raw_reply
+    )
+
+    reply = (
+        raw_reply
+        .replace(
+            marker,
+            ""
+        )
+        .strip()
+    )
 
     updated_profile = (
         request.custom_profile
@@ -421,5 +457,6 @@ WakeAI:
 
     return {
         "reply": reply,
-        "updated_profile": updated_profile
+        "updated_profile": updated_profile,
+        "wake_complete": wake_complete
     }
