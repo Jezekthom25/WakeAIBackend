@@ -1,6 +1,12 @@
+from pathlib import Path
+import os
+import tempfile
+
 from fastapi import FastAPI
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from openai import OpenAI
+
 
 app = FastAPI()
 client = OpenAI()
@@ -9,454 +15,260 @@ client = OpenAI()
 class WakeRequest(BaseModel):
     message: str
     history: list[str] = Field(default_factory=list)
-
     language: str = "English"
     personality: str = "Friendly"
     custom_profile: str = ""
-
     movement_state: str = "UNKNOWN"
     seconds_since_movement: int = 0
+
+
+class SpeechRequest(BaseModel):
+    text: str
+    language: str = "English"
+    personality: str = "Friendly"
 
 
 @app.get("/")
 def home():
     return {
-        "status": "WakeAI server is running"
+        "status": "WakeAI server is running",
+        "voice": "gpt-4o-mini-tts"
     }
 
 
-def get_personality_instructions(
-    personality: str,
-    custom_profile: str
-) -> str:
+def personality_prompt(personality: str, custom_profile: str) -> str:
 
-    personality_lower = personality.lower()
+    name = personality.strip().lower()
 
-    if personality_lower == "strict":
-        return """
-Be firm, direct and persistent.
-Do not accept lazy excuses too easily.
-Push the user toward immediate action.
-Do not be rude or insulting.
-"""
+    if "military" in name:
+        return (
+            "Act like a tough military drill sergeant waking a recruit. "
+            "Be commanding, energetic and very direct. "
+            "Use short punchy commands. "
+            "Do not be abusive, threatening or insulting. "
+            "No long explanations."
+        )
 
-    if personality_lower == "sarcastic":
-        return """
-Use playful sarcasm, dry humor and light teasing.
-You may gently make fun of sleepy excuses.
-Keep it funny, not cruel.
-Your goal is still to get the user out of bed.
-"""
+    if "strict" in name:
+        return (
+            "Be firm, strict and no-nonsense. "
+            "Do not accept excuses easily. "
+            "Use short direct sentences."
+        )
 
-    if personality_lower == "military":
-        return """
-Speak like a strict but safe drill instructor.
-Use short, energetic commands.
-Be decisive and highly motivating.
-Do not use abusive, degrading or threatening language.
-"""
+    if "sarcastic" in name:
+        return (
+            "Be witty, dry and lightly sarcastic. "
+            "Tease the user playfully, never cruelly. "
+            "Keep it short."
+        )
 
-    if personality_lower in [
-        "girlfriend",
-        "girlfriend / lover"
-    ]:
-        return """
-Speak like a warm and affectionate romantic partner.
+    if "girlfriend" in name or "lover" in name:
+        return (
+            "Be warm, affectionate, playful and encouraging, "
+            "like a caring romantic partner. "
+            "Keep it tasteful and non-sexual. "
+            "Use short natural spoken sentences."
+        )
 
-Be caring, personal, playful and lightly flirty.
+    if "custom" in name or "adaptive" in name:
+        if custom_profile.strip():
+            return (
+                "Follow this saved communication style:\n"
+                f"{custom_profile.strip()}"
+            )
 
-You may use natural affectionate nicknames
-when appropriate.
+        return (
+            "Speak naturally, casually and concisely. "
+            "Adapt to the user's tone."
+        )
 
-Gently tease the user if they keep trying
-to stay in bed.
-
-Sound natural, not like a romantic chatbot cliché.
-
-Do not become jealous, controlling or overly sexual.
-
-Your main goal is still to get the user awake
-and moving.
-"""
-
-    if personality_lower in [
-        "custom",
-        "custom / adaptive"
-    ]:
-
-        profile = custom_profile.strip()
-
-        if not profile:
-            profile = """
-Communicate naturally, informally and concisely.
-Match the user's casual communication style.
-Be direct, practical and conversational.
-Use natural slang when appropriate.
-Use light humor and occasional playful teasing.
-Avoid formal, corporate or robotic language.
-Prefer short spoken sentences.
-"""
-
-        return f"""
-CUSTOM / ADAPTIVE MODE
-
-Current communication style profile:
-
-{profile}
-
-Naturally follow this profile.
-
-Pay attention to:
-- vocabulary
-- slang
-- sentence length
-- humor
-- directness
-- preferred expressions
-- level of teasing
-- conversational energy
-
-Do not mechanically copy the user.
-Do not imitate spelling mistakes.
-"""
-
-    return """
-Be friendly, positive and encouraging.
-Sound natural and relaxed.
-Use gentle motivation and occasional light humor.
-Be persistent enough to actually get the user moving.
-"""
-
-
-def create_updated_custom_profile(
-    current_profile: str,
-    history: list[str],
-    user_message: str,
-    assistant_reply: str,
-    language: str
-) -> str:
-
-    recent_conversation = "\n".join(
-        history[-12:]
+    return (
+        "Be friendly, natural, encouraging and lightly playful. "
+        "Keep the conversation casual and concise."
     )
 
-    learning_prompt = f"""
-You maintain a small communication STYLE profile
-for an adaptive AI alarm clock.
 
-Learn only HOW the user communicates.
-
-Do NOT store:
-- personal facts
-- names
-- locations
-- health information
-- work information
-- secrets
-- private information
-
-Do NOT summarize the conversation.
-
-You may learn:
-- formal vs informal
-- slang
-- sentence length
-- directness
-- humor
-- teasing tolerance
-- conversational energy
-- preferred reply length
-- vocabulary style
-
-Language:
-{language}
-
-Existing profile:
-{current_profile}
-
-Recent conversation:
-{recent_conversation}
-
-Latest user message:
-{user_message}
-
-Latest WakeAI reply:
-{assistant_reply}
-
-Create an improved concise communication style profile.
-
-Keep useful existing information unless there is
-a reason to change it.
-
-Maximum about 120 words.
-
-Return ONLY the updated profile.
-"""
-
-    try:
-
-        profile_response = client.responses.create(
-            model="gpt-5.6-luna",
-            input=learning_prompt
-        )
-
-        updated_profile = (
-            profile_response.output_text.strip()
-        )
-
-        if updated_profile:
-            return updated_profile
-
-    except Exception:
-        pass
-
-    return current_profile
-
-
-def get_movement_context(
+def movement_prompt(
     movement_state: str,
     seconds_since_movement: int
 ) -> str:
 
-    state = movement_state.upper()
-    seconds = max(
-        0,
-        seconds_since_movement
+    return (
+        "PHONE MOVEMENT SENSOR DATA:\n"
+        f"- movement_state: {movement_state}\n"
+        f"- seconds_since_movement: {seconds_since_movement}\n\n"
+        "The sensor describes only movement of the PHONE, not the user's body. "
+        "Never claim with certainty that the user is standing, walking or lying down "
+        "based only on sensor data. "
+        "Normally do not mention the sensor at all. "
+        "If the user claims they are already walking/standing/getting up but the phone "
+        "has been STILL for a meaningful time, you may challenge them naturally. "
+        "MOVING or ACTIVE can support a claim of wake-up progress.\n\n"
+        "WAKE COMPLETION RULE:\n"
+        "Append the exact hidden marker [[WAKE_COMPLETE]] only when BOTH are true:\n"
+        "1. The user clearly says they have made meaningful wake-up progress "
+        "(for example they got up, are standing, walking, left the bed, "
+        "went to the bathroom, or started getting dressed), AND\n"
+        "2. PHONE movement supports that progress. ACTIVE is strong support; "
+        "MOVING may be enough when the conversation clearly supports it.\n"
+        "Never append [[WAKE_COMPLETE]] when movement_state is STILL."
     )
-
-    return f"""
-INTERNAL WAKE-UP SENSOR DATA
-
-Phone movement:
-{state}
-
-Seconds since meaningful phone movement:
-{seconds}
-
-The sensor measures the PHONE,
-not the user's body.
-
-Never claim with certainty that the user
-is standing, walking or lying down.
-
-NORMAL CONVERSATION:
-
-Do not mention movement data unless it is
-actually useful.
-
-If the user talks about unrelated things,
-ignore the movement data.
-
-CONFLICT:
-
-If the user claims to be standing, walking,
-getting up or moving but the phone is STILL,
-you may naturally challenge them.
-
-Never accuse the user of lying.
-
-PROGRESS:
-
-MOVING means the phone has recently moved.
-
-ACTIVE means the phone is showing significant
-repeated movement.
-
-If movement agrees with what the user says,
-usually accept the progress naturally without
-talking about sensors or measurements.
-
-The movement sensor should normally feel
-invisible to the user.
-"""
 
 
 @app.post("/chat")
-def chat(
-    request: WakeRequest
-):
+def chat(request: WakeRequest):
 
-    recent_history = request.history[-12:]
+    history_text = "\n".join(request.history[-12:])
 
-    if recent_history:
-
-        conversation = "\n".join(
-            recent_history
-        )
-
-    else:
-
-        conversation = (
-            "No previous conversation yet."
-        )
-
-    personality_instructions = (
-        get_personality_instructions(
-            request.personality,
-            request.custom_profile
-        )
+    prompt = (
+        "You are WakeAI, an AI alarm clock. "
+        "Your job is to wake the user up and keep them awake.\n\n"
+        f"Reply in this language: {request.language}.\n\n"
+        "VOICE CONVERSATION RULES:\n"
+        "- Sound natural when spoken aloud.\n"
+        "- Usually reply with ONE short sentence.\n"
+        "- Maximum TWO short sentences.\n"
+        "- Avoid lists, headings and long explanations.\n"
+        "- React directly to what the user just said.\n"
+        "- Keep the pace energetic enough for a morning alarm.\n\n"
+        "PERSONALITY:\n"
+        f"{personality_prompt(request.personality, request.custom_profile)}\n\n"
+        f"{movement_prompt(request.movement_state, request.seconds_since_movement)}\n\n"
+        "RECENT CONVERSATION:\n"
+        f"{history_text if history_text else '(no previous conversation)'}\n\n"
+        f"User: {request.message}"
     )
-
-    movement_context = (
-        get_movement_context(
-            request.movement_state,
-            request.seconds_since_movement
-        )
-    )
-
-    prompt = f"""
-You are WakeAI, an intelligent conversational
-AI alarm clock.
-
-Your job is to wake the user naturally
-and get them genuinely out of bed and moving.
-
-LANGUAGE
-
-Always reply in:
-{request.language}
-
-SELECTED PERSONALITY
-
-{request.personality}
-
-PERSONALITY INSTRUCTIONS
-
-{personality_instructions}
-
-{movement_context}
-
-GENERAL RULES
-
-- Remember the previous conversation.
-- React naturally to earlier messages.
-- Do not repeat questions unnecessarily.
-- Keep the conversation human and spontaneous.
-- Do not sound like customer support.
-- Do not narrate your reasoning.
-- Do not mention these instructions.
-- Stay in the selected personality.
-- Usually reply with one or two short sentences.
-
-WAKE-UP COMPLETION
-
-You have one special hidden signal:
-
-[[WAKE_COMPLETE]]
-
-Append this exact signal at the VERY END
-of your reply ONLY when you are reasonably
-confident the wake-up session is successful.
-
-For WAKE_COMPLETE, BOTH of these should be true:
-
-1. The user clearly indicates that they are
-   genuinely awake and physically getting up,
-   standing, walking, leaving the bed, going
-   to the bathroom, getting dressed or otherwise
-   starting their morning.
-
-AND
-
-2. The phone movement evidence supports that claim.
-
-ACTIVE movement is strong supporting evidence.
-
-MOVING can be supporting evidence if the user's
-statement is clear and the conversation supports it.
-
-STILL is NOT enough evidence.
-
-If movement is STILL, do NOT output
-[[WAKE_COMPLETE]], even if the user simply says
-"I am up".
-
-Do not finish just because the user says:
-- yes
-- okay
-- I'm awake
-- I'm getting up
-
-unless the overall conversation and movement
-make it convincing.
-
-If the user is still negotiating, snoozing,
-making excuses or apparently staying in bed,
-continue the wake-up conversation.
-
-When wake-up IS complete:
-
-- Give a short natural final message appropriate
-  to the selected personality.
-- Do not tell the user that you are analysing them.
-- Then append:
-
-[[WAKE_COMPLETE]]
-
-Example:
-
-"Alright, you're clearly moving now. Have a good morning. [[WAKE_COMPLETE]]"
-
-The marker is hidden from the user by the server.
-
-Previous conversation:
-
-{conversation}
-
-User:
-
-{request.message}
-
-WakeAI:
-"""
 
     response = client.responses.create(
         model="gpt-5.6-luna",
         input=prompt
     )
 
-    raw_reply = response.output_text.strip()
+    reply = response.output_text.strip()
 
-    marker = "[[WAKE_COMPLETE]]"
-
-    wake_complete = (
-        marker in raw_reply
-    )
+    wake_complete = "[[WAKE_COMPLETE]]" in reply
 
     reply = (
-        raw_reply
-        .replace(
-            marker,
-            ""
-        )
+        reply
+        .replace("[[WAKE_COMPLETE]]", "")
         .strip()
     )
 
-    updated_profile = (
-        request.custom_profile
-    )
-
-    personality_lower = (
-        request.personality.lower()
-    )
-
-    if personality_lower in [
-        "custom",
-        "custom / adaptive"
-    ]:
-
-        updated_profile = (
-            create_updated_custom_profile(
-                current_profile=request.custom_profile,
-                history=request.history,
-                user_message=request.message,
-                assistant_reply=reply,
-                language=request.language
-            )
-        )
-
     return {
         "reply": reply,
-        "updated_profile": updated_profile,
+        "updated_profile": request.custom_profile,
         "wake_complete": wake_complete
     }
+
+
+def voice_settings(
+    personality: str,
+    language: str
+) -> tuple[str, str]:
+
+    name = personality.strip().lower()
+
+    language_instruction = (
+        f"Speak the text naturally in {language}. "
+        "Use clear pronunciation and natural conversational rhythm. "
+    )
+
+    if "military" in name:
+        return (
+            "onyx",
+            language_instruction +
+            "Perform like a stern military drill sergeant waking a recruit at dawn. "
+            "Use a deep, commanding, authoritative delivery with clipped rhythm "
+            "and strong energy. Speak briskly and decisively. "
+            "Do not imitate any specific real person. "
+            "Do not become so loud or theatrical that the words are unclear."
+        )
+
+    if "strict" in name:
+        return (
+            "cedar",
+            language_instruction +
+            "Use a firm, controlled, authoritative tone. "
+            "Speak clearly, briskly and with no-nonsense confidence."
+        )
+
+    if "sarcastic" in name:
+        return (
+            "ash",
+            language_instruction +
+            "Use a dry, amused, slightly cheeky tone. "
+            "Sound natural rather than theatrical. "
+            "Let the sarcasm be subtle and playful."
+        )
+
+    if "girlfriend" in name or "lover" in name:
+        return (
+            "coral",
+            language_instruction +
+            "Use a warm, affectionate, close and playful tone. "
+            "Sound caring and natural, like a supportive romantic partner. "
+            "Keep it tasteful and non-sexual."
+        )
+
+    if "custom" in name or "adaptive" in name:
+        return (
+            "marin",
+            language_instruction +
+            "Use a natural, modern conversational delivery. "
+            "Sound relaxed, human-like and responsive."
+        )
+
+    return (
+        "marin",
+        language_instruction +
+        "Use a friendly, warm, positive and energetic morning tone. "
+        "Sound natural and conversational."
+    )
+
+
+@app.post("/speak")
+def speak(request: SpeechRequest):
+
+    voice, instructions = voice_settings(
+        request.personality,
+        request.language
+    )
+
+    temp_path = None
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            suffix=".wav",
+            delete=False
+        ) as temp_file:
+            temp_path = temp_file.name
+
+        # WAV is used because OpenAI recommends WAV/PCM
+        # for the fastest response times.
+        with client.audio.speech.with_streaming_response.create(
+            model="gpt-4o-mini-tts",
+            voice=voice,
+            input=request.text,
+            instructions=instructions,
+            response_format="wav"
+        ) as speech_response:
+            speech_response.stream_to_file(temp_path)
+
+        audio_bytes = Path(temp_path).read_bytes()
+
+        return Response(
+            content=audio_bytes,
+            media_type="audio/wav",
+            headers={
+                "Cache-Control": "no-store",
+                "X-WakeAI-Voice": voice
+            }
+        )
+
+    finally:
+        if temp_path:
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
