@@ -9,6 +9,7 @@ client = OpenAI()
 class WakeRequest(BaseModel):
     message: str
     history: list[str] = Field(default_factory=list)
+    language: str = "English"
 
 
 @app.get("/")
@@ -19,8 +20,6 @@ def home():
 @app.post("/chat")
 def chat(request: WakeRequest):
 
-    # Necháme maximálně posledních 12 částí rozhovoru,
-    # aby konverzace zbytečně nerostla.
     recent_history = request.history[-12:]
 
     if recent_history:
@@ -41,6 +40,8 @@ Personality:
 - conversational, not robotic
 
 Rules:
+- Always reply in {request.language}.
+- Keep using {request.language} even if the conversation history contains another language.
 - Remember and use the previous conversation.
 - Do not repeat questions unnecessarily.
 - React naturally to what the user said earlier.
