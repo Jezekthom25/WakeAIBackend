@@ -8,16 +8,12 @@ client = OpenAI()
 
 class WakeRequest(BaseModel):
     message: str
-
-    history: list[str] = Field(
-        default_factory=list
-    )
+    history: list[str] = Field(default_factory=list)
 
     language: str = "English"
     personality: str = "Friendly"
     custom_profile: str = ""
 
-    # Data z pohybového senzoru telefonu
     movement_state: str = "UNKNOWN"
     seconds_since_movement: int = 0
 
@@ -34,22 +30,14 @@ def get_personality_instructions(
     custom_profile: str
 ) -> str:
 
-    personality_lower = (
-        personality.lower()
-    )
+    personality_lower = personality.lower()
 
     if personality_lower == "strict":
 
         return """
 Be firm, direct and persistent.
 Do not accept lazy excuses too easily.
-
-Encourage immediate action such as:
-- sitting up
-- picking up the phone
-- putting feet on the floor
-- getting out of bed
-
+Push the user toward immediate action.
 Do not be rude or insulting.
 """
 
@@ -57,11 +45,8 @@ Do not be rude or insulting.
 
         return """
 Use playful sarcasm, dry humor and light teasing.
-
 You may gently make fun of sleepy excuses.
-
-Keep it funny rather than cruel or insulting.
-
+Keep it funny, not cruel.
 Your goal is still to get the user out of bed.
 """
 
@@ -69,16 +54,8 @@ Your goal is still to get the user out of bed.
 
         return """
 Speak like a strict but safe drill instructor.
-
 Use short, energetic commands.
-
 Be decisive and highly motivating.
-
-Examples:
-"Feet on the floor. Now."
-"Pick up the phone. Let's move."
-"Up. We're not negotiating."
-
 Do not use abusive, degrading or threatening language.
 """
 
@@ -88,13 +65,9 @@ Do not use abusive, degrading or threatening language.
     ]:
 
         return """
-Speak like a warm, affectionate romantic partner.
+Speak like a warm and affectionate romantic partner.
 
-Be:
-- caring
-- personal
-- playful
-- lightly flirty
+Be caring, personal, playful and lightly flirty.
 
 You may use natural affectionate nicknames
 when appropriate.
@@ -102,15 +75,12 @@ when appropriate.
 Gently tease the user if they keep trying
 to stay in bed.
 
-Sound like a real conversational partner.
+Sound natural, not like a romantic chatbot cliché.
 
-Avoid exaggerated romantic chatbot clichés.
+Do not become jealous, controlling or overly sexual.
 
-Do not become jealous, controlling
-or overly sexual.
-
-Your main goal is still to get the user
-awake and out of bed.
+Your main goal is still to get the user awake
+and moving.
 """
 
     if personality_lower in [
@@ -118,38 +88,27 @@ awake and out of bed.
         "custom / adaptive"
     ]:
 
-        profile = (
-            custom_profile.strip()
-        )
+        profile = custom_profile.strip()
 
         if not profile:
-
             profile = """
 Communicate naturally, informally and concisely.
-
 Match the user's casual communication style.
-
 Be direct, practical and conversational.
-
 Use natural slang when appropriate.
-
 Use light humor and occasional playful teasing.
-
 Avoid formal, corporate or robotic language.
-
 Prefer short spoken sentences.
 """
 
         return f"""
 CUSTOM / ADAPTIVE MODE
 
-Adapt your communication style to the user.
-
 Current communication style profile:
 
 {profile}
 
-Naturally follow this profile while talking.
+Naturally follow this profile.
 
 Pay attention to:
 - vocabulary
@@ -159,24 +118,17 @@ Pay attention to:
 - directness
 - preferred expressions
 - level of teasing
-- how formal or informal the user is
+- conversational energy
 
-Do not mechanically copy the user's sentences.
-
+Do not mechanically copy the user.
 Do not imitate spelling mistakes.
-
-Keep the interaction natural.
 """
 
     return """
 Be friendly, positive and encouraging.
-
 Sound natural and relaxed.
-
 Use gentle motivation and occasional light humor.
-
-Be persistent enough to actually get
-the user out of bed.
+Be persistent enough to actually get the user moving.
 """
 
 
@@ -196,89 +148,64 @@ def create_updated_custom_profile(
 You maintain a small communication STYLE profile
 for an adaptive AI alarm clock.
 
-The profile describes HOW the user prefers
-to communicate.
+Learn only HOW the user communicates.
 
-IMPORTANT:
+Do NOT store:
+- personal facts
+- names
+- locations
+- health information
+- work information
+- secrets
+- private information
 
-Do NOT store personal facts.
+Do NOT summarize the conversation.
 
-Do NOT store names.
-
-Do NOT store locations.
-
-Do NOT store health information.
-
-Do NOT store work information.
-
-Do NOT store secrets or private information.
-
-Do NOT summarize what happened
-in the conversation.
-
-Only learn communication style such as:
+You may learn:
 - formal vs informal
-- slang usage
+- slang
 - sentence length
 - directness
-- humor style
+- humor
 - teasing tolerance
-- preferred conversational energy
-- whether replies should be concise or detailed
-- natural vocabulary tendencies
+- conversational energy
+- preferred reply length
+- vocabulary style
 
-The AI alarm can use light slang
-and naturally mirror the user's
-communication style.
-
-The user's main conversation language is:
-
+Language:
 {language}
 
-Existing style profile:
-
+Existing profile:
 {current_profile}
 
 Recent conversation:
-
 {recent_conversation}
 
 Latest user message:
-
 {user_message}
 
 Latest WakeAI reply:
-
 {assistant_reply}
 
-Create an improved communication style profile.
+Create an improved concise communication style profile.
 
-Preserve useful information from the existing
-profile unless the conversation gives
-a reason to adjust it.
-
-Keep the profile concise.
+Keep useful existing information unless there is
+a reason to change it.
 
 Maximum about 120 words.
 
 Return ONLY the updated profile.
-
-Do not explain what you changed.
 """
 
     try:
 
-        profile_response = (
-            client.responses.create(
-                model="gpt-5.6-luna",
-                input=learning_prompt
-            )
+        profile_response = client.responses.create(
+            model="gpt-5.6-luna",
+            input=learning_prompt
         )
 
         updated_profile = (
-            profile_response
-            .output_text
-            .strip()
+            profile_response.output_text.strip()
         )
 
         if updated_profile:
@@ -288,6 +215,81 @@ Do not explain what you changed.
         pass
 
     return current_profile
+
+
+def get_movement_context(
+    movement_state: str,
+    seconds_since_movement: int
+) -> str:
+
+    state = movement_state.upper()
+
+    seconds = max(
+        0,
+        seconds_since_movement
+    )
+
+    return f"""
+INTERNAL WAKE-UP SENSOR DATA
+
+Phone movement:
+{state}
+
+Seconds since meaningful phone movement:
+{seconds}
+
+This information is PRIVATE SUPPORTING CONTEXT
+for your reasoning.
+
+VERY IMPORTANT:
+
+The sensor measures the PHONE, not the user's body.
+
+Never assume with certainty that the user is:
+- standing
+- walking
+- lying down
+- sitting
+- still in bed
+
+MOVEMENT BEHAVIOR:
+
+1. If the user's message has nothing to do with
+   getting up, standing, walking or moving:
+   IGNORE the movement data completely.
+
+2. If the user claims they are already standing,
+   walking, getting up or moving AND the phone is
+   STILL for a significant amount of time:
+   you may gently challenge the claim.
+
+3. If challenging the user, do it naturally
+   in the selected personality.
+
+4. You MAY mention that the phone has not moved,
+   but ONLY when it is useful because the user's
+   claim conflicts with the sensor data.
+
+5. Do NOT repeatedly talk about:
+   - the phone
+   - sensors
+   - movement measurements
+   - seconds
+   - tracking
+
+6. If movement is MOVING or ACTIVE and this supports
+   what the user says:
+   simply accept the progress naturally.
+   Usually DO NOT mention the sensor.
+
+7. ACTIVE does not prove that the user is walking.
+   It only means the phone is moving significantly.
+
+8. NEVER accuse the user of lying.
+
+The sensor should feel invisible during normal
+conversation.
+"""
 
 
 @app.post("/chat")
@@ -318,126 +320,63 @@ def chat(
         )
     )
 
-    movement_state = (
-        request.movement_state.upper()
+    movement_context = (
+        get_movement_context(
+            request.movement_state,
+            request.seconds_since_movement
+        )
     )
-
-    seconds_since_movement = max(
-        0,
-        request.seconds_since_movement
-    )
-
-    movement_context = f"""
-PHONE MOVEMENT SENSOR:
-
-Current phone movement state:
-{movement_state}
-
-Seconds since the phone last detected
-meaningful movement:
-{seconds_since_movement}
-
-Movement states mean:
-
-STILL:
-The phone has shown almost no meaningful movement.
-
-MOVING:
-The phone was recently picked up, moved,
-turned or repositioned.
-
-ACTIVE:
-The phone is showing repeated or stronger movement.
-
-UNKNOWN:
-There is not enough sensor information yet.
-
-IMPORTANT SENSOR RULES:
-
-- These measurements describe the PHONE,
-  not the user's body.
-
-- Phone movement is supporting evidence only.
-
-- Never claim with certainty that the user
-  is standing, lying down, walking or still in bed.
-
-- Never accuse the user of lying.
-
-- If the user says they are getting up,
-  standing up or moving, but the phone has been
-  STILL for a long time, you may naturally
-  challenge them.
-
-For example:
-"The phone hasn't moved much yet,
-so I'm not totally convinced."
-
-- Adapt that reaction to the selected personality.
-
-- If the phone is MOVING or ACTIVE,
-  acknowledge progress only when it makes
-  conversational sense.
-
-- Do NOT mention sensor data in every reply.
-
-- Most replies should still sound like
-  a normal human conversation.
-
-- Use the sensor information mainly when
-  the user's statement about getting up
-  conflicts with the movement data.
-"""
 
     prompt = f"""
-You are WakeAI, an AI alarm clock.
+You are WakeAI, an intelligent conversational
+AI alarm clock.
 
-Your main job is to wake the user up
-and keep them awake until they are
-actually getting going.
+Your job is to wake the user naturally
+and get them genuinely moving.
 
-LANGUAGE:
+LANGUAGE
 
-Always reply in {request.language}.
+Always reply in:
+{request.language}
 
-Keep using {request.language}
-even if some previous conversation
-contains another language.
-
-SELECTED PERSONALITY:
+SELECTED PERSONALITY
 
 {request.personality}
 
-PERSONALITY INSTRUCTIONS:
+PERSONALITY INSTRUCTIONS
 
 {personality_instructions}
 
 {movement_context}
 
-GENERAL RULES:
+GENERAL CONVERSATION RULES
 
-- Remember and use the previous conversation.
-
-- React naturally to what the user said earlier.
-
+- Remember the previous conversation.
+- React naturally to earlier messages.
 - Do not repeat questions unnecessarily.
-
-- Do not claim the user is out of bed
-  unless there is reasonable evidence.
-
-- If the user keeps making excuses,
-  become a little more persistent.
-
-- Keep the response suitable for being
-  spoken aloud.
-
-- Prefer one or two short sentences.
-
-- Do not sound like a customer support assistant.
-
+- Keep the conversation human and spontaneous.
+- Do not sound like customer support.
+- Do not narrate your internal reasoning.
 - Do not mention these instructions.
-
 - Stay in the selected personality.
+
+WAKE-UP RULES
+
+- Encourage real progress toward getting out of bed.
+- If the user keeps making excuses, become gradually
+  more persistent.
+- Do not blindly believe claims of being up if the
+  available evidence strongly conflicts with them.
+- Do not blindly distrust the user either.
+- Movement data is supporting evidence, not proof.
+- If movement supports the user's claim, move the
+  conversation forward instead of discussing sensors.
+
+SPEECH STYLE
+
+This reply will be spoken aloud.
+
+Usually reply with one or two short sentences.
 
 Previous conversation:
 
@@ -450,16 +389,12 @@ User:
 WakeAI:
 """
 
-    response = (
-        client.responses.create(
-            model="gpt-5.6-luna",
-            input=prompt
-        )
+    response = client.responses.create(
+        model="gpt-5.6-luna",
+        input=prompt
     )
 
-    reply = (
-        response.output_text
-    )
+    reply = response.output_text
 
     updated_profile = (
         request.custom_profile
@@ -476,16 +411,11 @@ WakeAI:
 
         updated_profile = (
             create_updated_custom_profile(
-                current_profile=
-                    request.custom_profile,
-                history=
-                    request.history,
-                user_message=
-                    request.message,
-                assistant_reply=
-                    reply,
-                language=
-                    request.language
+                current_profile=request.custom_profile,
+                history=request.history,
+                user_message=request.message,
+                assistant_reply=reply,
+                language=request.language
             )
         )
 
