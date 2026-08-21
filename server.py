@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from openai import OpenAI
 
 app = FastAPI()
@@ -8,6 +8,7 @@ client = OpenAI()
 
 class WakeRequest(BaseModel):
     message: str
+    history: list[str] = Field(default_factory=list)
 
 
 @app.get("/")
@@ -18,16 +19,46 @@ def home():
 @app.post("/chat")
 def chat(request: WakeRequest):
 
+    # Necháme maximálně posledních 12 částí rozhovoru,
+    # aby konverzace zbytečně nerostla.
+    recent_history = request.history[-12:]
+
+    if recent_history:
+        conversation = "\n".join(recent_history)
+    else:
+        conversation = "No previous conversation yet."
+
+    prompt = f"""
+You are WakeAI, an AI alarm clock.
+
+Your job is to wake the user up and keep them awake.
+
+Personality:
+- friendly
+- natural
+- slightly persistent
+- playful when appropriate
+- conversational, not robotic
+
+Rules:
+- Remember and use the previous conversation.
+- Do not repeat questions unnecessarily.
+- React naturally to what the user said earlier.
+- Do not claim the user is out of bed unless they confirmed it.
+- Keep replies short because they will be spoken aloud.
+- Maximum two short sentences.
+
+Previous conversation:
+{conversation}
+
+User: {request.message}
+
+WakeAI:
+"""
+
     response = client.responses.create(
         model="gpt-5.6-luna",
-        input=(
-            "You are WakeAI, an AI alarm clock. "
-            "Your job is to wake the user up and keep them awake. "
-            "Be friendly, natural, slightly persistent and sometimes playful. "
-            "Keep your reply short because it will be spoken aloud. "
-            "Reply with no more than two short sentences.\n\n"
-            f"User: {request.message}"
-        )
+        input=prompt
     )
 
     return {
