@@ -3,7 +3,7 @@ import os
 import tempfile
 
 from fastapi import FastAPI
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 from openai import OpenAI
 
@@ -44,9 +44,9 @@ def personality_prompt(personality: str, custom_profile: str) -> str:
         return (
             "Sound like a real drill sergeant standing next to the bed, not a chatbot. "
             "Be direct, sharp and energetic, but still human. "
-            "Use short commands and short reactions. "
+            "Use short complete spoken sentences and short reactions. "
             "Vary the wording instead of repeating the same command every turn. "
-            "Do not explain yourself. Do not use customer-service phrases. "
+            "Avoid one-word fragments unless they sound genuinely natural. Do not explain yourself. Do not use customer-service phrases. "
             "Do not say 'I understand', 'okay', 'based on', or 'as an AI'. "
             "Challenge excuses quickly, but never insult, threaten or humiliate."
         )
@@ -343,6 +343,54 @@ def approved_military_greeting() -> bytes | None:
         return None
 
     return audio_bytes
+
+
+@app.post("/speak-stream")
+def speak_stream(request: SpeechRequest):
+
+    voice, instructions = voice_settings(
+        request.personality,
+        request.language
+    )
+
+    spoken_text = prepare_speech_text(
+        request.text,
+        request.personality,
+        request.language
+    )
+
+    # Slightly quicker delivery without making speech unnaturally fast.
+    name = request.personality.strip().lower()
+    speech_speed = 1.08 if "military" in name else 1.04
+
+    def audio_stream():
+
+        with client.audio.speech.with_streaming_response.create(
+            model="gpt-4o-mini-tts",
+            voice=voice,
+            input=spoken_text,
+            instructions=instructions,
+            response_format="pcm",
+            speed=speech_speed
+        ) as speech_response:
+
+            for chunk in speech_response.iter_bytes(
+                chunk_size=4096
+            ):
+                if chunk:
+                    yield chunk
+
+    return StreamingResponse(
+        audio_stream(),
+        media_type="application/octet-stream",
+        headers={
+            "Cache-Control": "no-store",
+            "X-WakeAI-Audio-Format": "pcm_s16le",
+            "X-WakeAI-Sample-Rate": "24000",
+            "X-WakeAI-Channels": "1",
+            "X-WakeAI-Voice": voice
+        }
+    )
 
 
 @app.post("/speak")
