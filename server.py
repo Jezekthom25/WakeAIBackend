@@ -35,6 +35,10 @@ class RealtimeTokenRequest(BaseModel):
     language: str = "English"
     personality: str = "Friendly"
     custom_profile: str = ""
+    # "audio" keeps the current direct Realtime speech-to-speech path.
+    # "text" is used by the hybrid path: Realtime listens/reasons,
+    # then Android sends the finished text to our streamed ONYX TTS.
+    output_mode: str = "audio"
 
 
 @app.get("/")
@@ -409,25 +413,44 @@ def realtime_token(request: RealtimeTokenRequest):
         request.personality
     )
 
+    requested_output_mode = (
+        request.output_mode
+        .strip()
+        .lower()
+    )
+
+    output_mode = (
+        "text"
+        if requested_output_mode == "text"
+        else "audio"
+    )
+
+    audio_config = {
+        "input": {
+            "format": {
+                "type": "audio/pcm",
+                "rate": 24000
+            },
+            "turn_detection": {
+                "type": "semantic_vad"
+            }
+        }
+    }
+
+    # Voice is relevant only for direct Realtime audio output.
+    # In hybrid text mode, Android will use /speak-stream instead,
+    # which preserves our ONYX Military voice.
+    if output_mode == "audio":
+        audio_config["output"] = {
+            "voice": voice
+        }
+
     session_config = {
         "session": {
             "type": "realtime",
             "model": "gpt-realtime-2.1-mini",
-            "output_modalities": ["audio"],
-            "audio": {
-                "input": {
-                    "format": {
-                        "type": "audio/pcm",
-                        "rate": 24000
-                    },
-                    "turn_detection": {
-                        "type": "semantic_vad"
-                    }
-                },
-                "output": {
-                    "voice": voice
-                }
-            },
+            "output_modalities": [output_mode],
+            "audio": audio_config,
             "instructions": realtime_instructions(
                 request.language,
                 request.personality,
@@ -467,7 +490,8 @@ def realtime_token(request: RealtimeTokenRequest):
                 headers={
                     "Cache-Control": "no-store",
                     "X-WakeAI-Realtime-Voice": voice,
-                    "X-WakeAI-Realtime-Model": "gpt-realtime-2.1-mini"
+                    "X-WakeAI-Realtime-Model": "gpt-realtime-2.1-mini",
+                    "X-WakeAI-Realtime-Output": output_mode
                 }
             )
 
