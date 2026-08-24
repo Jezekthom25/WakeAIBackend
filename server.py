@@ -1,6 +1,9 @@
 from pathlib import Path
 import os
 import tempfile
+import json
+import urllib.request
+import urllib.error
 
 from fastapi import FastAPI
 from fastapi.responses import Response, StreamingResponse
@@ -26,6 +29,12 @@ class SpeechRequest(BaseModel):
     text: str
     language: str = "English"
     personality: str = "Friendly"
+
+
+class RealtimeTokenRequest(BaseModel):
+    language: str = "English"
+    personality: str = "Friendly"
+    custom_profile: str = ""
 
 
 @app.get("/")
@@ -234,6 +243,43 @@ def voice_settings(
     )
 
 
+
+def realtime_voice(personality: str) -> str:
+
+    name = personality.strip().lower()
+
+    # Realtime currently supports voices such as cedar, marin, ash and coral.
+    # ONYX is not a Realtime voice, so Military uses cedar.
+    if "military" in name or "strict" in name:
+        return "cedar"
+
+    if "sarcastic" in name:
+        return "ash"
+
+    if "girlfriend" in name or "lover" in name:
+        return "coral"
+
+    return "marin"
+
+
+def realtime_instructions(
+    language: str,
+    personality: str,
+    custom_profile: str
+) -> str:
+
+    return (
+        "You are WakeAI, a voice-first AI alarm clock in a live spoken conversation. "
+        f"Always speak in {language}. "
+        "Respond immediately and naturally, like a real person standing nearby. "
+        "Usually use one short complete sentence; never more than two short sentences. "
+        "Do not use lists, headings, explanations, chatbot filler, or customer-service phrases. "
+        "Do not repeat the user's sentence back to them. "
+        "Do not ask a question every turn. "
+        "Keep the pace energetic enough for waking someone up. "
+        f"Personality instructions: {personality_prompt(personality, custom_profile)}"
+    )
+
 def prepare_speech_text(
     text: str,
     personality: str,
@@ -343,6 +389,116 @@ def approved_military_greeting() -> bytes | None:
         return None
 
     return audio_bytes
+
+
+@app.post("/realtime-token")
+def realtime_token(request: RealtimeTokenRequest):
+
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+
+    if not api_key:
+        return Response(
+            content=json.dumps(
+                {"error": "OPENAI_API_KEY is not configured"}
+            ),
+            status_code=500,
+            media_type="application/json"
+        )
+
+    voice = realtime_voice(
+        request.personality
+    )
+
+    session_config = {
+        "session": {
+            "type": "realtime",
+            "model": "gpt-realtime-2.1-mini",
+            "output_modalities": ["audio"],
+            "audio": {
+                "input": {
+                    "format": {
+                        "type": "audio/pcm",
+                        "rate": 24000
+                    },
+                    "turn_detection": {
+                        "type": "semantic_vad"
+                    }
+                },
+                "output": {
+                    "voice": voice
+                }
+            },
+            "instructions": realtime_instructions(
+                request.language,
+                request.personality,
+                request.custom_profile
+            )
+        }
+    }
+
+    body = json.dumps(
+        session_config
+    ).encode("utf-8")
+
+    openai_request = urllib.request.Request(
+        "https://api.openai.com/v1/realtime/client_secrets",
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "OpenAI-Safety-Identifier": "wakeai-anonymous-v1"
+        }
+    )
+
+    try:
+
+        with urllib.request.urlopen(
+            openai_request,
+            timeout=15
+        ) as response:
+
+            response_body = response.read()
+
+            return Response(
+                content=response_body,
+                status_code=response.status,
+                media_type="application/json",
+                headers={
+                    "Cache-Control": "no-store",
+                    "X-WakeAI-Realtime-Voice": voice,
+                    "X-WakeAI-Realtime-Model": "gpt-realtime-2.1-mini"
+                }
+            )
+
+    except urllib.error.HTTPError as error:
+
+        error_body = error.read()
+
+        return Response(
+            content=error_body,
+            status_code=error.code,
+            media_type="application/json",
+            headers={
+                "Cache-Control": "no-store"
+            }
+        )
+
+    except Exception as error:
+
+        return Response(
+            content=json.dumps(
+                {
+                    "error": "Failed to create Realtime token",
+                    "detail": str(error)
+                }
+            ),
+            status_code=500,
+            media_type="application/json",
+            headers={
+                "Cache-Control": "no-store"
+            }
+        )
 
 
 @app.post("/speak-stream")
