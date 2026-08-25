@@ -114,9 +114,13 @@ def movement_prompt(
         f"Phone movement: {movement_state}; "
         f"seconds since movement: {seconds_since_movement}. "
         "This describes the PHONE only, not the body. "
-        "Do not mention the sensor unless the user's claim conflicts with it. "
-        "Use [[WAKE_COMPLETE]] only when the user clearly reports meaningful wake-up progress "
-        "and phone movement supports it. Never use it when movement_state is STILL."
+        "Movement is auxiliary context only: it is never required for completion and it is never sufficient by itself. "
+        "The alarm ends by conversational agreement. "
+        "If the user merely says they are awake, up, getting up, standing, or moving, do NOT finish yet; "
+        "ask one short explicit confirmation that they are awake and that WakeAI may stop the alarm. "
+        "Use [[WAKE_COMPLETE]] only if the user clearly asks to stop/turn off/end the alarm, "
+        "or clearly answers yes to a prior WakeAI confirmation question about ending it. "
+        "Never use [[WAKE_COMPLETE]] after silence, uncertainty, refusal, 'later', or 'five more minutes'."
     )
 
 
@@ -146,6 +150,13 @@ def chat(request: WakeRequest):
 
         "PERSONALITY:\n"
         f"{personality_prompt(request.personality, request.custom_profile)}\n\n"
+
+        "ENDING THE ALARM:\n"
+        "- Completion is a conversational agreement, not a movement test.\n"
+        "- If the user merely claims to be awake/getting up, ask one brief confirmation and do NOT emit [[WAKE_COMPLETE]] yet.\n"
+        "- Emit [[WAKE_COMPLETE]] only when the user explicitly asks to stop/end the alarm, or clearly confirms a prior WakeAI question about stopping it.\n"
+        "- Never emit it for silence, uncertainty, refusal, or a request for more sleep.\n"
+        "- When you emit it, also say one short natural final confirmation sentence; do not ask another question.\n\n"
 
         "STATE:\n"
         f"{movement_prompt(request.movement_state, request.seconds_since_movement)}\n\n"
@@ -281,6 +292,13 @@ def realtime_instructions(
         "Do not repeat the user's sentence back to them. "
         "Do not ask a question every turn. "
         "Keep the pace energetic enough for waking someone up. "
+        "The alarm ends ONLY by clear conversational agreement, never because of phone movement alone. "
+        "If the user only says they are awake, up, getting up, standing, or moving, do not end immediately; "
+        "normally ask one short explicit confirmation that they are awake and that you may stop the alarm, then wait for their reply. "
+        "If the user clearly and unambiguously asks you to stop, turn off, or end the alarm, that direct request is enough to accept. "
+        "Never end after silence, vague mumbling, uncertainty, refusal, 'later', or a request for more sleep. "
+        "When the wake_complete tool is available and the agreement is clear, call it instead of speaking a normal reply. "
+        "Put the final one-sentence spoken confirmation in the tool's final_message argument. "
         f"Personality instructions: {personality_prompt(personality, custom_profile)}"
     )
 
