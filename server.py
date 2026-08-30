@@ -216,9 +216,10 @@ def voice_settings(
         return (
             "onyx",
             f"Speak naturally in {language}. "
-            "Low, firm drill-sergeant delivery. Fast, clipped and authoritative. "
-            "Short hard endings, brief pauses, no customer-service warmth. "
-            "Sound like a real person giving an order, not a performance."
+            "Use a low, firm, confident drill-sergeant presence, but sound unmistakably human and spontaneous. "
+            "Keep natural conversational prosody and connected speech; do not chop every phrase into fragments and do not punch every word equally. "
+            "Commands may land sharply, but ordinary reactions should have varied rhythm, natural emphasis and small human pauses. "
+            "Be authoritative and energetic without theatrical barking, monotone delivery, or customer-service warmth."
         )
 
     if "strict" in name:
@@ -292,12 +293,13 @@ def realtime_instructions(
         "Do not repeat the user's sentence back to them. "
         "Do not ask a question every turn. "
         "Keep the pace energetic enough for waking someone up. "
-        "The alarm ends ONLY by clear conversational agreement, never because of phone movement alone. "
-        "If the user only says they are awake, up, getting up, standing, or moving, do not end immediately; "
-        "normally ask one short explicit confirmation that they are awake and that you may stop the alarm, then wait for their reply. "
+        "HIGHEST-PRIORITY ACTION ROUTING: when the snooze_alarm tool is available, any explicit request for more sleep, extra minutes, a delay, snooze, or to be woken again later MUST use snooze_alarm. "
+        "Examples include 'five more minutes', 'ještě pět minut', 'odlož budík', and 'vzbuď mě za deset minut'. Never answer a snooze request by saying it is not confirmation to turn the alarm off, and never ask the wake-completion confirmation question in response to snooze. "
+        "The alarm ends permanently ONLY by clear conversational agreement, never because of phone movement alone. "
+        "If the user only says they are awake, up, getting up, standing, or moving, do not end immediately; normally ask one short explicit confirmation that they are awake and that you may stop the alarm, then wait for their reply. "
         "If the user clearly and unambiguously asks you to stop, turn off, or end the alarm, that direct request is enough to accept. "
-        "Never end after silence, vague mumbling, uncertainty, refusal, 'later', or a request for more sleep. "
-        "When the wake_complete tool is available and the agreement is clear, call it instead of speaking a normal reply. "
+        "Never use wake_complete after silence, vague mumbling, uncertainty, refusal, 'later', or a request for more sleep. "
+        "When wake_complete is available and the agreement is clear, call it instead of speaking a normal reply. "
         "Put the final one-sentence spoken confirmation in the tool's final_message argument. "
         f"Personality instructions: {personality_prompt(personality, custom_profile)}"
     )
@@ -559,7 +561,7 @@ def speak_stream(request: SpeechRequest):
 
     # Slightly quicker delivery without making speech unnaturally fast.
     name = request.personality.strip().lower()
-    speech_speed = 1.08 if "military" in name else 1.04
+    speech_speed = 1.03 if "military" in name else 1.04
 
     def audio_stream():
 
