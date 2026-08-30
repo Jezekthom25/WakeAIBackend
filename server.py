@@ -1,4 +1,4 @@
-
+from pathlib import Path
 import os
 import tempfile
 import json
@@ -798,8 +798,15 @@ def voice_settings(
     if "girlfriend" in name or "lover" in name:
         return (
             "coral",
-            language_instruction +
-            "Warm, close and playful. Sound spontaneous and affectionate, not scripted."
+            f"Speak naturally in {language} as a real adult woman talking to her partner at close conversational distance in the morning. "
+            "Keep the voice warm, gentle, affectionate and emotionally present, but understated rather than performed. "
+            "Use relaxed connected speech, subtle pitch variation, soft natural sentence endings and small breath-sized pauses where a real person would pause. "
+            "Let some short phrases flow together instead of pronouncing every word with equal weight. "
+            "React to the meaning of the sentence: a tiny smile, mild concern, playful warmth or affectionate persistence can appear naturally when appropriate. "
+            "Do not sound like an AI assistant, narrator, advertisement, customer-service voice, audiobook reader or radio presenter. "
+            "Do not over-enunciate, over-project, use a repetitive sing-song melody, or make every sentence equally upbeat. "
+            "Keep enough morning energy to wake someone, but stay intimate, calm and human. "
+            "The delivery must remain tasteful and non-sexual."
         )
 
     if "custom" in name or "adaptive" in name:
@@ -1118,9 +1125,17 @@ def speak_stream(request: SpeechRequest):
         request.language
     )
 
-    # Slightly quicker delivery without making speech unnaturally fast.
+    # Personality-specific delivery speed.
+    # Girlfriend/Lover is intentionally a touch slower so the speech has room
+    # for natural pauses and softer conversational prosody.
     name = request.personality.strip().lower()
-    speech_speed = 1.00 if "military" in name else 1.04
+
+    if "military" in name:
+        speech_speed = 1.00
+    elif "girlfriend" in name or "lover" in name:
+        speech_speed = 0.98
+    else:
+        speech_speed = 1.04
 
     def audio_stream():
 
