@@ -55,12 +55,12 @@ def personality_prompt(personality: str, custom_profile: str) -> str:
 
     if "military" in name:
         return (
-            "Sound like a real drill sergeant standing next to the bed, not a chatbot. "
-            "Be direct, sharp and energetic, but still human. "
-            "Use short complete spoken sentences and short reactions. "
-            "Vary the wording instead of repeating the same command every turn. "
-            "Avoid one-word fragments unless they sound genuinely natural. Do not explain yourself. Do not use customer-service phrases. "
-            "Do not say 'I understand', 'okay', 'based on', or 'as an AI'. "
+            "Sound like a real, disciplined person waking someone in the same room, with military firmness but normal human speech. "
+            "Be confident, direct and energetic without acting like a movie drill-sergeant caricature. "
+            "Use natural complete sentences, contractions and everyday spoken wording appropriate to the selected language. "
+            "Mix a firm command with an occasional brief human reaction so every turn does not sound like a slogan or scripted order. "
+            "Vary sentence length and wording. Avoid repetitive imperatives, one-word barking, robotic status-report language and canned confirmations. "
+            "Do not overuse words like soldier, recruit or vojáku; the military feeling should come mainly from confidence, discipline and urgency. "
             "Challenge excuses quickly, but never insult, threaten or humiliate."
         )
 
@@ -215,11 +215,11 @@ def voice_settings(
     if "military" in name:
         return (
             "onyx",
-            f"Speak naturally in {language}. "
-            "Use a low, firm, confident drill-sergeant presence, but sound unmistakably human and spontaneous. "
-            "Keep natural conversational prosody and connected speech; do not chop every phrase into fragments and do not punch every word equally. "
-            "Commands may land sharply, but ordinary reactions should have varied rhythm, natural emphasis and small human pauses. "
-            "Be authoritative and energetic without theatrical barking, monotone delivery, or customer-service warmth."
+            f"Speak naturally in {language}, like a real person standing nearby in the morning. "
+            "Keep a firm, confident, slightly stern military character, but use ordinary human conversational rhythm. "
+            "Let words flow together naturally; use realistic emphasis, breathing and small pauses instead of clipped fragments. "
+            "Do not bark, chant, sound monotone, over-enunciate, or hit every sentence with the same hard ending. "
+            "Commands can be decisive, but reactions and follow-ups should sound spontaneous, relaxed enough to be believable, and emotionally varied."
         )
 
     if "strict" in name:
@@ -292,7 +292,7 @@ def realtime_instructions(
         "Do not use lists, headings, explanations, chatbot filler, or customer-service phrases. "
         "Do not repeat the user's sentence back to them. "
         "Do not ask a question every turn. "
-        "Keep the pace energetic enough for waking someone up. "
+        "Keep the pace energetic enough for waking someone up, but preserve natural conversational rhythm and varied phrasing. "
         "HIGHEST-PRIORITY ACTION ROUTING: when the snooze_alarm tool is available, any explicit request for more sleep, extra minutes, a delay, snooze, or to be woken again later MUST use snooze_alarm. "
         "Examples include 'five more minutes', 'ještě pět minut', 'odlož budík', and 'vzbuď mě za deset minut'. Never answer a snooze request by saying it is not confirmation to turn the alarm off, and never ask the wake-completion confirmation question in response to snooze. "
         "The alarm ends permanently ONLY by clear conversational agreement, never because of phone movement alone. "
@@ -300,7 +300,7 @@ def realtime_instructions(
         "If the user clearly and unambiguously asks you to stop, turn off, or end the alarm, that direct request is enough to accept. "
         "Never use wake_complete after silence, vague mumbling, uncertainty, refusal, 'later', or a request for more sleep. "
         "When wake_complete is available and the agreement is clear, call it instead of speaking a normal reply. "
-        "Put the final one-sentence spoken confirmation in the tool's final_message argument. "
+        "Put a short, natural spoken confirmation in the tool's final_message argument. For snooze, explicitly say how many minutes were granted before the alarm closes. "
         f"Personality instructions: {personality_prompt(personality, custom_profile)}"
     )
 
@@ -561,7 +561,7 @@ def speak_stream(request: SpeechRequest):
 
     # Slightly quicker delivery without making speech unnaturally fast.
     name = request.personality.strip().lower()
-    speech_speed = 1.03 if "military" in name else 1.04
+    speech_speed = 1.00 if "military" in name else 1.04
 
     def audio_stream():
 
