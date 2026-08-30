@@ -1,4 +1,4 @@
-from pathlib import Path
+
 import os
 import tempfile
 import json
@@ -228,14 +228,335 @@ def daily_weather_item(daily: dict, index: int) -> dict | None:
     }
 
 
+def _number(value):
+    if value is None or value == "":
+        return None
+
+    try:
+        number = float(value)
+        return int(number) if number.is_integer() else number
+    except (TypeError, ValueError):
+        return None
+
+
+def _first_text(items, key="value"):
+    if not isinstance(items, list) or not items:
+        return None
+
+    first = items[0]
+    if isinstance(first, dict):
+        value = first.get(key)
+        return str(value).strip() if value is not None else None
+
+    return str(first).strip()
+
+
+def _wttr_daily_item(day: dict) -> dict:
+    hourly = day.get("hourly") or []
+
+    def numeric_values(name: str):
+        values = []
+        for item in hourly:
+            value = _number(item.get(name))
+            if value is not None:
+                values.append(value)
+        return values
+
+    # Prefer the reading nearest midday for a human-friendly daily condition.
+    representative = None
+    if hourly:
+        def distance_from_noon(item):
+            try:
+                return abs(int(item.get("time", "1200")) - 1200)
+            except Exception:
+                return 9999
+
+        representative = min(
+            hourly,
+            key=distance_from_noon
+        )
+
+    description = None
+    if representative:
+        description = _first_text(
+            representative.get("weatherDesc")
+        )
+
+    chance_of_rain = numeric_values("chanceofrain")
+    chance_of_snow = numeric_values("chanceofsnow")
+    precip = numeric_values("precipMM")
+    wind = numeric_values("windspeedKmph")
+    gust = numeric_values("WindGustKmph")
+
+    return {
+        "date": day.get("date"),
+        "condition": description or "unknown",
+        "temperature_max_c": _number(day.get("maxtempC")),
+        "temperature_min_c": _number(day.get("mintempC")),
+        "precipitation_probability_max_percent": max(
+            chance_of_rain + chance_of_snow,
+            default=None
+        ),
+        "precipitation_sum_mm": (
+            round(sum(precip), 1)
+            if precip
+            else None
+        ),
+        "wind_speed_max_kmh": max(
+            wind,
+            default=None
+        ),
+        "wind_gusts_max_kmh": max(
+            gust,
+            default=None
+        )
+    }
+
+
+def weather_from_wttr(
+    cleaned_location: str
+) -> dict:
+    """
+    Independent fallback provider.
+
+    wttr.in supports JSON via ?format=j1. Some current deployments wrap the
+    documented JSON object inside a top-level "data" field, so handle both
+    layouts deliberately.
+    """
+    encoded_location = urllib.parse.quote(
+        cleaned_location,
+        safe=""
+    )
+
+    raw = open_meteo_json(
+        f"https://wttr.in/{encoded_location}?format=j1",
+        max_attempts=2
+    )
+
+    payload = raw.get("data", raw)
+
+    current_list = (
+        payload.get("current_condition")
+        or []
+    )
+    days = payload.get("weather") or []
+    nearest = payload.get("nearest_area") or []
+
+    if not current_list or not days:
+        raise RuntimeError(
+            "wttr.in returned incomplete weather data"
+        )
+
+    current = current_list[0]
+    place = nearest[0] if nearest else {}
+
+    def area_text(name: str):
+        return _first_text(
+            place.get(name)
+        )
+
+    result_days = [
+        _wttr_daily_item(day)
+        for day in days[:3]
+    ]
+
+    while len(result_days) < 3:
+        result_days.append(None)
+
+    return {
+        "source": "wttr.in",
+        "location": {
+            "requested": cleaned_location,
+            "name": area_text("areaName") or cleaned_location,
+            "admin1": area_text("region"),
+            "country": area_text("country"),
+            "latitude": _number(place.get("latitude")),
+            "longitude": _number(place.get("longitude")),
+            "timezone": None
+        },
+        "current": {
+            "time": current.get("localObsDateTime")
+                or current.get("observation_time"),
+            "condition": (
+                _first_text(
+                    current.get("weatherDesc")
+                )
+                or "unknown"
+            ),
+            "temperature_c": _number(
+                current.get("temp_C")
+            ),
+            "apparent_temperature_c": _number(
+                current.get("FeelsLikeC")
+            ),
+            "precipitation_mm": _number(
+                current.get("precipMM")
+            ),
+            "rain_mm": None,
+            "showers_mm": None,
+            "snowfall_cm": None,
+            "cloud_cover_percent": _number(
+                current.get("cloudcover")
+            ),
+            "humidity_percent": _number(
+                current.get("humidity")
+            ),
+            "wind_speed_kmh": _number(
+                current.get("windspeedKmph")
+            ),
+            "wind_gusts_kmh": _number(
+                current.get("WindGustKmph")
+            )
+        },
+        "today": result_days[0],
+        "tomorrow": result_days[1],
+        "day_after_tomorrow": result_days[2]
+    }
+
+
+def weather_from_open_meteo(
+    cleaned_location: str,
+    language: str
+) -> dict:
+    geocode_query = urllib.parse.urlencode(
+        {
+            "name": cleaned_location,
+            "count": 1,
+            "format": "json",
+            "language": weather_language_code(language)
+        }
+    )
+
+    geocode = open_meteo_json(
+        "https://geocoding-api.open-meteo.com/v1/search?"
+        + geocode_query
+    )
+
+    results = geocode.get("results") or []
+    if not results:
+        raise LookupError(
+            "location_not_found"
+        )
+
+    place = results[0]
+    latitude = place.get("latitude")
+    longitude = place.get("longitude")
+
+    forecast_query = urllib.parse.urlencode(
+        {
+            "latitude": latitude,
+            "longitude": longitude,
+            "timezone": "auto",
+            "forecast_days": 3,
+            "current": ",".join(
+                [
+                    "temperature_2m",
+                    "apparent_temperature",
+                    "precipitation",
+                    "rain",
+                    "showers",
+                    "snowfall",
+                    "weather_code",
+                    "cloud_cover",
+                    "wind_speed_10m",
+                    "wind_gusts_10m"
+                ]
+            ),
+            "daily": ",".join(
+                [
+                    "weather_code",
+                    "temperature_2m_max",
+                    "temperature_2m_min",
+                    "apparent_temperature_max",
+                    "apparent_temperature_min",
+                    "precipitation_probability_max",
+                    "precipitation_sum",
+                    "rain_sum",
+                    "showers_sum",
+                    "snowfall_sum",
+                    "wind_speed_10m_max",
+                    "wind_gusts_10m_max"
+                ]
+            )
+        }
+    )
+
+    forecast = open_meteo_json(
+        "https://api.open-meteo.com/v1/forecast?"
+        + forecast_query
+    )
+
+    current = forecast.get("current") or {}
+    current_code = current.get("weather_code")
+    daily = forecast.get("daily") or {}
+
+    return {
+        "source": "Open-Meteo",
+        "location": {
+            "requested": cleaned_location,
+            "name": place.get("name"),
+            "admin1": place.get("admin1"),
+            "country": place.get("country"),
+            "country_code": place.get("country_code"),
+            "latitude": latitude,
+            "longitude": longitude,
+            "timezone": forecast.get("timezone")
+                or place.get("timezone")
+        },
+        "current": {
+            "time": current.get("time"),
+            "condition": (
+                weather_code_description(
+                    int(current_code)
+                )
+                if current_code is not None
+                else "unknown"
+            ),
+            "weather_code": current_code,
+            "temperature_c": current.get(
+                "temperature_2m"
+            ),
+            "apparent_temperature_c": current.get(
+                "apparent_temperature"
+            ),
+            "precipitation_mm": current.get(
+                "precipitation"
+            ),
+            "rain_mm": current.get("rain"),
+            "showers_mm": current.get("showers"),
+            "snowfall_cm": current.get("snowfall"),
+            "cloud_cover_percent": current.get(
+                "cloud_cover"
+            ),
+            "wind_speed_kmh": current.get(
+                "wind_speed_10m"
+            ),
+            "wind_gusts_kmh": current.get(
+                "wind_gusts_10m"
+            )
+        },
+        "today": daily_weather_item(daily, 0),
+        "tomorrow": daily_weather_item(daily, 1),
+        "day_after_tomorrow": daily_weather_item(
+            daily,
+            2
+        )
+    }
+
+
 @app.get("/weather")
 def weather(
     location: str,
     language: str = "English"
 ):
     """
-    Resolve a spoken place name and return compact current + 3-day weather.
-    This endpoint is designed as a deterministic tool for WakeAI Realtime.
+    Live weather tool for WakeAI.
+
+    Provider order:
+      1) Open-Meteo
+      2) wttr.in
+
+    The Android/Reatime side gets the same compact schema either way.
     """
     cleaned_location = location.strip()
 
@@ -248,155 +569,48 @@ def weather(
             media_type="application/json"
         )
 
+    provider_errors = []
+
     try:
-        geocode_query = urllib.parse.urlencode(
-            {
-                "name": cleaned_location,
-                "count": 1,
-                "format": "json",
-                "language": weather_language_code(language)
-            }
+        return weather_from_open_meteo(
+            cleaned_location,
+            language
+        )
+    except Exception as error:
+        provider_errors.append(
+            f"Open-Meteo: {type(error).__name__}"
         )
 
-        geocode = open_meteo_json(
-            "https://geocoding-api.open-meteo.com/v1/search?" +
-            geocode_query
+    try:
+        return weather_from_wttr(
+            cleaned_location
+        )
+    except Exception as error:
+        provider_errors.append(
+            f"wttr.in: {type(error).__name__}"
         )
 
-        results = geocode.get("results") or []
-        if not results:
-            return Response(
-                content=json.dumps(
-                    {
-                        "error": "location_not_found",
-                        "location": cleaned_location
-                    }
-                ),
-                status_code=404,
-                media_type="application/json"
-            )
+    # Keep the response safe for the model: it may say live weather is
+    # temporarily unavailable, but it must not invent a quota/billing reason.
+    print(
+        "Weather providers unavailable: "
+        + ", ".join(provider_errors)
+    )
 
-        place = results[0]
-        latitude = place.get("latitude")
-        longitude = place.get("longitude")
-
-        forecast_query = urllib.parse.urlencode(
+    return Response(
+        content=json.dumps(
             {
-                "latitude": latitude,
-                "longitude": longitude,
-                "timezone": "auto",
-                "forecast_days": 3,
-                "current": ",".join(
-                    [
-                        "temperature_2m",
-                        "apparent_temperature",
-                        "precipitation",
-                        "rain",
-                        "showers",
-                        "snowfall",
-                        "weather_code",
-                        "cloud_cover",
-                        "wind_speed_10m",
-                        "wind_gusts_10m"
-                    ]
-                ),
-                "daily": ",".join(
-                    [
-                        "weather_code",
-                        "temperature_2m_max",
-                        "temperature_2m_min",
-                        "apparent_temperature_max",
-                        "apparent_temperature_min",
-                        "precipitation_probability_max",
-                        "precipitation_sum",
-                        "rain_sum",
-                        "showers_sum",
-                        "snowfall_sum",
-                        "wind_speed_10m_max",
-                        "wind_gusts_10m_max"
-                    ]
+                "error": "live_weather_temporarily_unavailable",
+                "message": (
+                    "Live weather data could not be retrieved right now. "
+                    "Do not guess the weather and do not claim that the user "
+                    "exceeded an API quota or billing limit."
                 )
             }
-        )
-
-        forecast = open_meteo_json(
-            "https://api.open-meteo.com/v1/forecast?" +
-            forecast_query
-        )
-
-        current = forecast.get("current") or {}
-        current_code = current.get("weather_code")
-        daily = forecast.get("daily") or {}
-
-        return {
-            "source": "Open-Meteo",
-            "location": {
-                "requested": cleaned_location,
-                "name": place.get("name"),
-                "admin1": place.get("admin1"),
-                "country": place.get("country"),
-                "country_code": place.get("country_code"),
-                "latitude": latitude,
-                "longitude": longitude,
-                "timezone": forecast.get("timezone") or place.get("timezone")
-            },
-            "current": {
-                "time": current.get("time"),
-                "condition": (
-                    weather_code_description(int(current_code))
-                    if current_code is not None
-                    else "unknown"
-                ),
-                "weather_code": current_code,
-                "temperature_c": current.get("temperature_2m"),
-                "apparent_temperature_c": current.get("apparent_temperature"),
-                "precipitation_mm": current.get("precipitation"),
-                "rain_mm": current.get("rain"),
-                "showers_mm": current.get("showers"),
-                "snowfall_cm": current.get("snowfall"),
-                "cloud_cover_percent": current.get("cloud_cover"),
-                "wind_speed_kmh": current.get("wind_speed_10m"),
-                "wind_gusts_kmh": current.get("wind_gusts_10m")
-            },
-            "today": daily_weather_item(daily, 0),
-            "tomorrow": daily_weather_item(daily, 1),
-            "day_after_tomorrow": daily_weather_item(daily, 2)
-        }
-
-    except urllib.error.HTTPError as error:
-        # Deliberately do not expose provider billing/rate-limit speculation to
-        # the assistant. The model only needs to know that live weather data
-        # could not be retrieved right now.
-        return Response(
-            content=json.dumps(
-                {
-                    "error": "live_weather_temporarily_unavailable",
-                    "message": (
-                        "Live weather data could not be retrieved right now. "
-                        "Do not guess the weather or invent a reason such as "
-                        "an API quota or user limit."
-                    )
-                }
-            ),
-            status_code=502,
-            media_type="application/json"
-        )
-
-    except Exception:
-        return Response(
-            content=json.dumps(
-                {
-                    "error": "live_weather_temporarily_unavailable",
-                    "message": (
-                        "Live weather data could not be retrieved right now. "
-                        "Do not guess the weather or invent a reason such as "
-                        "an API quota or user limit."
-                    )
-                }
-            ),
-            status_code=502,
-            media_type="application/json"
-        )
+        ),
+        status_code=502,
+        media_type="application/json"
+    )
 
 
 def personality_prompt(personality: str, custom_profile: str) -> str:
