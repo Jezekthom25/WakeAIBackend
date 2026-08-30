@@ -5,6 +5,7 @@ import json
 import urllib.request
 import urllib.error
 import urllib.parse
+import time
 
 from fastapi import FastAPI
 from fastapi.responses import Response, StreamingResponse
@@ -83,23 +84,102 @@ def weather_code_description(code: int) -> str:
     return "unknown"
 
 
-def open_meteo_json(url: str) -> dict:
-    request = urllib.request.Request(
-        url,
-        method="GET",
-        headers={
-            "Accept": "application/json",
-            "User-Agent": "WakeAI/1.0"
-        }
-    )
+def open_meteo_json(
+    url: str,
+    max_attempts: int = 3
+) -> dict:
+    """
+    Fetch Open-Meteo JSON with short retries for transient provider/network
+    failures. WakeAI is an alarm, so retries are intentionally short: we want
+    resilience without making the spoken answer feel stuck.
+    """
+    retryable_http_codes = {
+        408,
+        425,
+        429,
+        500,
+        502,
+        503,
+        504
+    }
 
-    with urllib.request.urlopen(
-        request,
-        timeout=10
-    ) as response:
-        return json.loads(
-            response.read().decode("utf-8")
+    last_error: Exception | None = None
+
+    for attempt in range(1, max_attempts + 1):
+        request = urllib.request.Request(
+            url,
+            method="GET",
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "WakeAI/1.0"
+            }
         )
+
+        try:
+            with urllib.request.urlopen(
+                request,
+                timeout=12
+            ) as response:
+                raw = response.read().decode("utf-8")
+                return json.loads(raw)
+
+        except urllib.error.HTTPError as error:
+            last_error = error
+
+            if (
+                error.code not in retryable_http_codes
+                or attempt >= max_attempts
+            ):
+                raise
+
+            # Respect a small Retry-After value when supplied by the provider,
+            # otherwise use a compact exponential backoff.
+            retry_after = None
+            try:
+                header_value = error.headers.get("Retry-After")
+                if header_value is not None:
+                    retry_after = float(header_value)
+            except Exception:
+                retry_after = None
+
+            fallback_delay = 0.35 * (2 ** (attempt - 1))
+            delay = (
+                min(max(retry_after, 0.0), 3.0)
+                if retry_after is not None
+                else fallback_delay
+            )
+            time.sleep(delay)
+
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            OSError
+        ) as error:
+            last_error = error
+
+            if attempt >= max_attempts:
+                raise
+
+            time.sleep(
+                0.35 * (2 ** (attempt - 1))
+            )
+
+        except json.JSONDecodeError as error:
+            last_error = error
+
+            if attempt >= max_attempts:
+                raise
+
+            time.sleep(
+                0.35 * (2 ** (attempt - 1))
+            )
+
+    if last_error is not None:
+        raise last_error
+
+    raise RuntimeError(
+        "Weather provider returned no response"
+    )
 
 
 def weather_language_code(language: str) -> str:
@@ -284,29 +364,34 @@ def weather(
         }
 
     except urllib.error.HTTPError as error:
-        try:
-            detail = error.read().decode("utf-8")
-        except Exception:
-            detail = str(error)
-
+        # Deliberately do not expose provider billing/rate-limit speculation to
+        # the assistant. The model only needs to know that live weather data
+        # could not be retrieved right now.
         return Response(
             content=json.dumps(
                 {
-                    "error": "weather_provider_http_error",
-                    "status": error.code,
-                    "detail": detail
+                    "error": "live_weather_temporarily_unavailable",
+                    "message": (
+                        "Live weather data could not be retrieved right now. "
+                        "Do not guess the weather or invent a reason such as "
+                        "an API quota or user limit."
+                    )
                 }
             ),
             status_code=502,
             media_type="application/json"
         )
 
-    except Exception as error:
+    except Exception:
         return Response(
             content=json.dumps(
                 {
-                    "error": "weather_lookup_failed",
-                    "detail": str(error)
+                    "error": "live_weather_temporarily_unavailable",
+                    "message": (
+                        "Live weather data could not be retrieved right now. "
+                        "Do not guess the weather or invent a reason such as "
+                        "an API quota or user limit."
+                    )
                 }
             ),
             status_code=502,
