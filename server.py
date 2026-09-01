@@ -23,8 +23,6 @@ class WakeRequest(BaseModel):
     language: str = "English"
     personality: str = "Friendly"
     custom_profile: str = ""
-    movement_state: str = "UNKNOWN"
-    seconds_since_movement: int = 0
 
 
 class SpeechRequest(BaseModel):
@@ -666,24 +664,6 @@ def personality_prompt(personality: str, custom_profile: str) -> str:
     )
 
 
-def movement_prompt(
-    movement_state: str,
-    seconds_since_movement: int
-) -> str:
-
-    return (
-        f"Phone movement: {movement_state}; "
-        f"seconds since movement: {seconds_since_movement}. "
-        "This describes the PHONE only, not the body. "
-        "Movement is auxiliary context only: it is never required for completion and it is never sufficient by itself. "
-        "The alarm ends by conversational agreement. "
-        "If the user merely says they are awake, up, getting up, standing, or moving, do NOT finish yet; "
-        "ask one short explicit confirmation that they are awake and that WakeAI may stop the alarm. "
-        "Use [[WAKE_COMPLETE]] only if the user clearly asks to stop/turn off/end the alarm, "
-        "or clearly answers yes to a prior WakeAI confirmation question about ending it. "
-        "Never use [[WAKE_COMPLETE]] after silence, uncertainty, refusal, 'later', or 'five more minutes'."
-    )
-
 
 @app.post("/chat")
 def chat(request: WakeRequest):
@@ -711,14 +691,11 @@ def chat(request: WakeRequest):
         f"{personality_prompt(request.personality, request.custom_profile)}\n\n"
 
         "ENDING THE ALARM:\n"
-        "- Completion is a conversational agreement, not a movement test.\n"
+        "- Completion is based only on clear conversational agreement.\n"
         "- If the user merely claims to be awake/getting up, ask one brief confirmation and do NOT emit [[WAKE_COMPLETE]] yet.\n"
         "- Emit [[WAKE_COMPLETE]] only when the user explicitly asks to stop/end the alarm, or clearly confirms a prior WakeAI question about stopping it.\n"
         "- Never emit it for silence, uncertainty, refusal, or a request for more sleep.\n"
         "- When you emit it, also say one short natural final confirmation sentence; do not ask another question.\n\n"
-
-        "STATE:\n"
-        f"{movement_prompt(request.movement_state, request.seconds_since_movement)}\n\n"
 
         "RECENT TALK:\n"
         f"{history_text if history_text else '(none)'}\n"
@@ -798,15 +775,8 @@ def voice_settings(
     if "girlfriend" in name or "lover" in name:
         return (
             "coral",
-            f"Speak naturally in {language} as a real adult woman talking to her partner at close conversational distance in the morning. "
-            "Keep the voice warm, gentle, affectionate and emotionally present, but understated rather than performed. "
-            "Use relaxed connected speech, subtle pitch variation, soft natural sentence endings and small breath-sized pauses where a real person would pause. "
-            "Let some short phrases flow together instead of pronouncing every word with equal weight. "
-            "React to the meaning of the sentence: a tiny smile, mild concern, playful warmth or affectionate persistence can appear naturally when appropriate. "
-            "Do not sound like an AI assistant, narrator, advertisement, customer-service voice, audiobook reader or radio presenter. "
-            "Do not over-enunciate, over-project, use a repetitive sing-song melody, or make every sentence equally upbeat. "
-            "Keep enough morning energy to wake someone, but stay intimate, calm and human. "
-            "The delivery must remain tasteful and non-sexual."
+            language_instruction +
+            "Warm, close and playful. Sound spontaneous and affectionate, not scripted."
         )
 
     if "custom" in name or "adaptive" in name:
@@ -861,7 +831,7 @@ def realtime_instructions(
         "Do not repeat the user's sentence back, narrate your rules, use lists/headings, or drift into chatbot, therapy or customer-service language. Stay focused on waking the user. "
         "HIGHEST-PRIORITY ACTION ROUTING: when the snooze_alarm tool is available, any explicit request for more sleep, extra minutes, a delay, snooze, or to be woken again later MUST use snooze_alarm. "
         "Examples include 'five more minutes', 'ještě pět minut', 'odlož budík', and 'vzbuď mě za deset minut'. Never answer a snooze request by saying it is not confirmation to turn the alarm off, and never ask the wake-completion confirmation question in response to snooze. "
-        "The alarm ends permanently ONLY by clear conversational agreement, never because of phone movement alone. "
+        "The alarm ends permanently ONLY by clear conversational agreement. "
         "If the user only says they are awake, up, getting up, standing, or moving, do not end immediately; normally ask one short explicit confirmation that they are awake and that you may stop the alarm, then wait for their reply. "
         "If the user clearly and unambiguously asks you to stop, turn off, or end the alarm, that direct request is enough to accept. "
         "Never use wake_complete after silence, vague mumbling, uncertainty, refusal, 'later', or a request for more sleep. "
@@ -1125,17 +1095,9 @@ def speak_stream(request: SpeechRequest):
         request.language
     )
 
-    # Personality-specific delivery speed.
-    # Girlfriend/Lover is intentionally a touch slower so the speech has room
-    # for natural pauses and softer conversational prosody.
+    # Slightly quicker delivery without making speech unnaturally fast.
     name = request.personality.strip().lower()
-
-    if "military" in name:
-        speech_speed = 1.00
-    elif "girlfriend" in name or "lover" in name:
-        speech_speed = 0.98
-    else:
-        speech_speed = 1.04
+    speech_speed = 1.00 if "military" in name else 1.04
 
     def audio_stream():
 
