@@ -1205,3 +1205,279 @@ def speak(request: SpeechRequest):
                 os.remove(temp_path)
             except OSError:
                 pass
+
+
+# ---------------------------------------------------------------------------
+# Google Play Billing verification
+# ---------------------------------------------------------------------------
+
+GOOGLE_PLAY_PACKAGE = "com.wakeai.alarm"
+GOOGLE_PLAY_PRODUCT = "wakeai_premium"
+GOOGLE_PLAY_BASE_PLANS = {"monthly", "yearly"}
+GOOGLE_PLAY_SERVICE_ACCOUNT_FILE = (
+    "/etc/secrets/google-play-service-account.json"
+)
+
+
+class BillingVerifyRequest(BaseModel):
+    purchaseToken: str = Field(
+        min_length=1,
+        max_length=4096
+    )
+
+
+def google_play_service():
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+
+    credentials = (
+        service_account.Credentials
+        .from_service_account_file(
+            GOOGLE_PLAY_SERVICE_ACCOUNT_FILE,
+            scopes=[
+                "https://www.googleapis.com/auth/androidpublisher"
+            ]
+        )
+    )
+
+    return build(
+        "androidpublisher",
+        "v3",
+        credentials=credentials,
+        cache_discovery=False
+    )
+
+
+def rfc3339_to_millis(value: str | None) -> int:
+    if not value:
+        return 0
+
+    from datetime import datetime, timezone
+
+    parsed = datetime.fromisoformat(
+        value.replace("Z", "+00:00")
+    )
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(
+            tzinfo=timezone.utc
+        )
+
+    return int(parsed.timestamp() * 1000)
+
+
+def empty_billing_result():
+    return {
+        "premium": False,
+        "acknowledged": False,
+        "productId": "",
+        "basePlanId": "",
+        "validUntilMillis": 0
+    }
+
+
+@app.get("/billing/status")
+def billing_status():
+    try:
+        secret_file = Path(
+            GOOGLE_PLAY_SERVICE_ACCOUNT_FILE
+        )
+
+        if (
+            not secret_file.is_file()
+            or secret_file.stat().st_size <= 0
+        ):
+            return {"ready": False}
+
+        # Constructing the API client validates that the service-account
+        # credentials can be loaded. No secret contents are logged or returned.
+        google_play_service()
+
+        return {"ready": True}
+
+    except Exception:
+        return {"ready": False}
+
+
+@app.post("/billing/verify")
+def billing_verify(
+    request: BillingVerifyRequest
+):
+    token = request.purchaseToken.strip()
+
+    if not token:
+        return empty_billing_result()
+
+    try:
+        from googleapiclient.errors import HttpError
+
+        service = google_play_service()
+
+        try:
+            purchase = (
+                service
+                .purchases()
+                .subscriptionsv2()
+                .get(
+                    packageName=GOOGLE_PLAY_PACKAGE,
+                    token=token
+                )
+                .execute()
+            )
+
+        except HttpError as error:
+            status = getattr(
+                error.resp,
+                "status",
+                500
+            )
+
+            if status in {400, 404, 410}:
+                return empty_billing_result()
+
+            return Response(
+                content=json.dumps(
+                    {
+                        "error":
+                            "subscription_verification_unavailable"
+                    }
+                ),
+                status_code=503,
+                media_type="application/json"
+            )
+
+        state = purchase.get(
+            "subscriptionState",
+            ""
+        )
+
+        # A canceled recurring subscription keeps entitlement until expiry.
+        # Pending, paused, on-hold and expired subscriptions do not.
+        allowed_states = {
+            "SUBSCRIPTION_STATE_ACTIVE",
+            "SUBSCRIPTION_STATE_IN_GRACE_PERIOD",
+            "SUBSCRIPTION_STATE_CANCELED"
+        }
+
+        if state not in allowed_states:
+            return empty_billing_result()
+
+        best_expiry = 0
+        best_base_plan = ""
+
+        for item in purchase.get(
+            "lineItems",
+            []
+        ):
+            product_id = item.get(
+                "productId",
+                ""
+            )
+
+            offer_details = (
+                item.get("offerDetails")
+                or {}
+            )
+
+            base_plan_id = (
+                offer_details.get(
+                    "basePlanId",
+                    ""
+                )
+            )
+
+            expiry_millis = (
+                rfc3339_to_millis(
+                    item.get("expiryTime")
+                )
+            )
+
+            if (
+                product_id
+                != GOOGLE_PLAY_PRODUCT
+            ):
+                continue
+
+            if (
+                base_plan_id
+                not in GOOGLE_PLAY_BASE_PLANS
+            ):
+                continue
+
+            if expiry_millis > best_expiry:
+                best_expiry = expiry_millis
+                best_base_plan = base_plan_id
+
+        if not best_base_plan:
+            return empty_billing_result()
+
+        now_millis = int(
+            time.time() * 1000
+        )
+
+        if best_expiry <= now_millis:
+            return empty_billing_result()
+
+        acknowledgement_state = (
+            purchase.get(
+                "acknowledgementState",
+                ""
+            )
+        )
+
+        acknowledged = (
+            acknowledgement_state
+            == "ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED"
+        )
+
+        if not acknowledged:
+            try:
+                (
+                    service
+                    .purchases()
+                    .subscriptions()
+                    .acknowledge(
+                        packageName=
+                            GOOGLE_PLAY_PACKAGE,
+                        subscriptionId=
+                            GOOGLE_PLAY_PRODUCT,
+                        token=token,
+                        body={}
+                    )
+                    .execute()
+                )
+
+                acknowledged = True
+
+            except Exception:
+                return Response(
+                    content=json.dumps(
+                        {
+                            "error":
+                                "subscription_acknowledgement_failed"
+                        }
+                    ),
+                    status_code=503,
+                    media_type="application/json"
+                )
+
+        return {
+            "premium": acknowledged,
+            "acknowledged": acknowledged,
+            "productId": GOOGLE_PLAY_PRODUCT,
+            "basePlanId": best_base_plan,
+            "validUntilMillis": best_expiry
+        }
+
+    except Exception:
+        return Response(
+            content=json.dumps(
+                {
+                    "error":
+                        "subscription_verification_unavailable"
+                }
+            ),
+            status_code=503,
+            media_type="application/json"
+        )
+
