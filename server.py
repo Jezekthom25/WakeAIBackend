@@ -991,10 +991,10 @@ def realtime_token(request: RealtimeTokenRequest):
             # than the Realtime default so a sleepy/quiet voice can trigger it
             # without shouting. If room noise starts causing false triggers,
             # raise threshold toward 0.50; if speech is still too quiet, lower
-            # it gradually toward 0.30.
+            # it gradually toward 0.20.
             "turn_detection": {
                 "type": "server_vad",
-                "threshold": 0.35,
+                "threshold": 0.25,
                 "prefix_padding_ms": 500,
                 "silence_duration_ms": 700,
                 "create_response": True,
