@@ -987,8 +987,18 @@ def realtime_token(request: RealtimeTokenRequest):
                 "type": "audio/pcm",
                 "rate": 24000
             },
+            # WakeAI alarm mode is intentionally a little more sensitive
+            # than the Realtime default so a sleepy/quiet voice can trigger it
+            # without shouting. If room noise starts causing false triggers,
+            # raise threshold toward 0.50; if speech is still too quiet, lower
+            # it gradually toward 0.30.
             "turn_detection": {
-                "type": "semantic_vad"
+                "type": "server_vad",
+                "threshold": 0.35,
+                "prefix_padding_ms": 500,
+                "silence_duration_ms": 700,
+                "create_response": True,
+                "interrupt_response": True
             }
         }
     }
