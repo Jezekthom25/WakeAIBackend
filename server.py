@@ -994,7 +994,7 @@ def realtime_token(request: RealtimeTokenRequest):
             # it gradually toward 0.20.
             "turn_detection": {
                 "type": "server_vad",
-                "threshold": 0.25,
+                "threshold": 0.20,
                 "prefix_padding_ms": 500,
                 "silence_duration_ms": 700,
                 "create_response": True,
