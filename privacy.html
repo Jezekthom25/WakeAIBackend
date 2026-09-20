@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="How WakeAI handles voice conversations, alarm settings, weather requests and Premium subscriptions.">
+  <title>WakeAI Privacy Policy</title>
+  <style>
+    :root { color-scheme: light dark; --bg:#f5f7fc; --card:#fff; --ink:#17243e; --muted:#506079; --accent:#245fbb; --line:#dbe3f0; }
+    * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--ink); font:17px/1.65 system-ui,sans-serif; }
+    main { max-width:860px; margin:auto; padding:52px 24px 80px; } header { padding-bottom:28px; border-bottom:1px solid var(--line); }
+    .brand { font-size:19px; font-weight:750; letter-spacing:.04em; color:var(--accent); } h1 { font-size:clamp(32px,6vw,48px); line-height:1.1; margin:18px 0; }
+    h2 { font-size:23px; line-height:1.3; margin-top:38px; } p,li { max-width:72ch; } a { color:var(--accent); text-underline-offset:3px; }
+    .summary { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:18px 24px; margin:28px 0; } .muted { color:var(--muted); } li { margin:8px 0; }
+    @media(prefers-color-scheme:dark) { :root { --bg:#101a2b; --card:#18263c; --ink:#edf3ff; --muted:#b3c0d5; --accent:#9ec7ff; --line:#32425c; } }
+  </style>
+</head>
+<body><main>
+<header><div class="brand">WakeAI</div><h1>Privacy Policy</h1><p class="muted">Effective 20 September 2026 · Android application com.wakeai.alarm</p></header>
+<div class="summary"><strong>At a glance</strong><p>Classic alarms work on your phone. Premium AI conversations send your voice and relevant conversation context to OpenAI. Weather uses the place you ask about. Payments are handled by Google Play. WakeAI contains no advertising SDK or third-party analytics SDK.</p></div>
+<h2>1. Who is responsible</h2>
+<p>WakeAI is operated by Tomáš Ježek, Netherlands, the controller of personal data processed to provide WakeAI. For privacy requests or support, contact <a href="mailto:wakeaisupport@gmail.com">wakeaisupport@gmail.com</a>.</p>
+<h2>2. Alarm settings and adaptive memory</h2>
+<p>Alarm times, repeat days, selected sounds, language, personality and appearance preferences are saved on your device. A custom personality profile, if you provide one, is included in requests needed to configure your AI conversation.</p>
+<p>When adaptive memory is enabled, WakeAI keeps statistics for up to seven recent wake-up sessions on your device, such as response time, snoozes, escalation level and the number of speech turns. It sends a compact summary to OpenAI to adapt later wake-up conversations. This history does not store recordings or conversation transcripts. You can switch adaptive memory off and clear its history in Settings.</p>
+<p>Android may include local settings and history in device backups according to your system backup settings. Purchase verification data is excluded from the app's backup rules.</p>
+<h2>3. Voice and AI conversations</h2>
+<p>With microphone permission, WakeAI captures audio during an active AI wake-up conversation, including when the alarm is running while the phone is locked. Audio is sent over an encrypted connection to OpenAI to understand you and generate a spoken reply. Conversation context, language, personality, any custom profile and the adaptive summary are used for the same purpose. The microphone stops when the AI session ends. Classic alarms do not require voice processing.</p>
+<p>The WakeAI backend on Render establishes AI sessions and handles text or speech-generation requests used by the app. The application backend does not maintain a database of your conversations. Temporary generated speech files are removed after processing; ongoing conversation data is processed in memory.</p>
+<p>OpenAI has its own retention controls: standard API abuse-monitoring logs can retain content for up to 30 days, with legal or security exceptions. Some API features, such as the Responses API used by the text endpoint, can also retain application state. OpenAI states that API data is not used to train its models by default unless the API customer opts in. These provider practices are explained in <a href="https://developers.openai.com/api/docs/guides/your-data">OpenAI's API data controls</a>. Do not share passwords, payment-card details or other unnecessary sensitive information in a conversation.</p>
+<p>For a system speech-recognition fallback, WakeAI prefers Android on-device recognition. If it is unavailable, the configured system recognition provider (for example, Google) may process audio under its own settings and privacy policy.</p>
+<h2>4. Weather</h2>
+<p>If you ask for weather, the place you specify is sent through our backend to Open-Meteo and, if necessary, wttr.in. The result is passed to OpenAI so it can answer you. WakeAI does not request GPS location permission or automatically track your location. The place you name may still reveal a location you are interested in. It can also appear in server request logs because the weather service uses a URL query.</p>
+<h2>5. Premium subscriptions</h2>
+<p>Google Play processes purchases and renewals. WakeAI and its backend use a purchase token, product and base-plan identifiers, subscription status and expiry time to verify and restore Premium access and acknowledge a purchase. We do not receive your full payment-card or bank details. Google maintains purchase records under its own policies; deleting WakeAI does not cancel a subscription. Manage or cancel it in Google Play.</p>
+<h2>6. Technical information and support</h2>
+<p>Service providers receive the connection information needed to deliver requests, such as IP address, request time, endpoint and response status. Technical logs are used for reliability, security and troubleshooting. Device diagnostics record connection stages, timing and errors. They are not automatically uploaded by an analytics service.</p>
+<p>If you email support, we receive your email address and the information you choose to send, using Gmail. We use that correspondence to answer your request and resolve the issue. We retain it for as long as needed for that purpose or a legal obligation, then delete it or remove identifying information.</p>
+<h2>7. Providers, security and international processing</h2>
+<p>We use Render for backend hosting (the service is hosted in Frankfurt), OpenAI for AI and speech processing, Google Play for subscriptions, Gmail for support, and Open-Meteo/wttr.in for weather. Data is disclosed only as needed for these functions, security, legal obligations or your instructions. We do not sell your personal data or use it for targeted advertising.</p>
+<p>Connections to our backend and AI services use encryption in transit. Provider processing may take place outside your country, including outside the European Economic Area. Applicable provider contracts and safeguards govern those transfers. Details are available from <a href="https://openai.com/policies/privacy-policy/">OpenAI</a>, <a href="https://render.com/privacy">Render</a>, <a href="https://policies.google.com/privacy">Google</a> and <a href="https://open-meteo.com/en/terms">Open-Meteo</a>.</p>
+<h2>8. Retention and your choices</h2>
+<ul>
+<li>Local settings remain until you change them or delete the app's local data. Adaptive history is limited to seven sessions and can be cleared separately. Your Android backups are managed through Android/Google backup settings.</li>
+<li>Voice and conversation retention by OpenAI is described above. WakeAI does not offer a server-side conversation archive.</li>
+<li>Render dashboard logs expire according to its workspace retention period (7 to 30 days depending on plan). We do not configure a separate long-term conversation log archive.</li>
+<li>Purchase records held by Google and legally required transaction records follow the applicable legal and provider retention requirements.</li>
+<li>You can revoke microphone permission in Android settings, stop an AI session, use classic alarms, disable adaptive memory, or contact us to request deletion of data we hold.</li>
+</ul>
+<p>WakeAI does not require creation of a WakeAI account. To request access to or deletion of support or other identifiable data we hold, email <a href="mailto:wakeaisupport@gmail.com?subject=WakeAI%20privacy%20request">wakeaisupport@gmail.com</a>. Tell us what the request concerns; do not send passwords or purchase tokens. We may ask for proportionate information to verify your request. Some records may need to be retained for legal obligations or claims.</p>
+<h2>9. European privacy rights</h2>
+<p>We process data necessary to provide requested functions and manage subscriptions to perform our agreement with you; optional microphone access and any processing requiring consent depend on your permission or consent. Reliability, security and support processing may rely on our legitimate interests, balanced against your rights. Legal obligations may require certain records to be retained.</p>
+<p>Where applicable, you can request access, correction, deletion, restriction or portability of your data and object to processing based on legitimate interests. You can withdraw consent without affecting earlier lawful processing. Contact us using the email above. You may also complain to your local data protection authority, including the Dutch <a href="https://autoriteitpersoonsgegevens.nl/en">Autoriteit Persoonsgegevens</a>.</p>
+<h2>10. Age and changes</h2>
+<p>WakeAI's first release is intended for people aged 18 and over. We do not knowingly direct the service to children. If you believe a child has provided personal data, contact us.</p>
+<p>We will update this page when our practices change and update the effective date. Material changes will also be communicated through the app or its store information where appropriate.</p>
+<p class="muted">Questions? <a href="mailto:wakeaisupport@gmail.com">wakeaisupport@gmail.com</a></p>
+</main></body></html>

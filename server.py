@@ -8,13 +8,21 @@ import urllib.parse
 import time
 
 from fastapi import FastAPI
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response, StreamingResponse, HTMLResponse
 from pydantic import BaseModel, Field
 from openai import OpenAI
 
 
 app = FastAPI()
 client = OpenAI()
+
+
+@app.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
+def privacy_policy():
+    return HTMLResponse(
+        Path(__file__).with_name("privacy.html").read_text(encoding="utf-8"),
+        headers={"Cache-Control": "public, max-age=300"},
+    )
 
 
 class WakeRequest(BaseModel):
