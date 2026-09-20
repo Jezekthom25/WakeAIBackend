@@ -17,6 +17,20 @@ app = FastAPI()
 client = OpenAI()
 
 
+class ReviewAccessRequest(BaseModel):
+    code: str = Field(min_length=16, max_length=256)
+
+
+@app.post("/review/verify")
+def review_verify(request: ReviewAccessRequest):
+    from review_access import verify_review_code
+    return Response(
+        content=json.dumps(verify_review_code(request.code)),
+        media_type="application/json",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
 def privacy_policy():
     return HTMLResponse(
